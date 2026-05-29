@@ -1,7 +1,7 @@
-import 'package:emcc_digital/services/database_service.dart';
 // lib/screens/splash_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:emcc_digital/services/database_service.dart';
 import 'login_screen.dart';
 import 'dashboard_screen.dart';
 
@@ -31,9 +31,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       CurvedAnimation(parent: _controller, curve: Curves.elasticOut),
     );
     _controller.forward();
-    
-    // Iniciar servicios
-    MeshService.start();
     
     Timer(const Duration(milliseconds: 2000), () => _verificarSesion());
   }
@@ -85,42 +82,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      child: const Icon(
-                        Icons.school_rounded,
-                        size: 70,
-                        color: Colors.white,
-                      ),
+                      child: const Icon(Icons.school_rounded, size: 70, color: Colors.white),
                     ),
                     const SizedBox(height: 30),
-                    const Text(
-                      'EMCC DIGITAL',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 2,
-                      ),
-                    ),
+                    const Text('EMCC DIGITAL', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white, letterSpacing: 2)),
                     const SizedBox(height: 10),
-                    Text(
-                      'Sistema de Gestión Escolar',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.white.withOpacity(0.8),
-                        letterSpacing: 1,
-                      ),
-                    ),
+                    Text('Sistema de Gestión Escolar', style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.8), letterSpacing: 1)),
                     const SizedBox(height: 50),
-                    SizedBox(
-                      width: 40,
-                      height: 40,
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white.withOpacity(0.8),
-                        ),
-                        strokeWidth: 3,
-                      ),
-                    ),
+                    SizedBox(width: 40, height: 40, child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation<Color>(Colors.white.withOpacity(0.8)), strokeWidth: 3)),
                   ],
                 ),
               ),
