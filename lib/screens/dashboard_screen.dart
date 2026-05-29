@@ -78,9 +78,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final u = DatabaseService.usuario;
-    final stats = _data?['stats'] as Map<String, dynamic>?;
-    final esEst = u?.cargo == 'estudiante';
-    final puedeNotificar = ['directiva', 'oficial', 'profesor'].contains(u?.cargo);
+    final puedeNotificar = u != null && ['directiva', 'oficial', 'profesor'].contains(u.cargo);
 
     return Scaffold(
       appBar: AppBar(

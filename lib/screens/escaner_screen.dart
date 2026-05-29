@@ -1,3 +1,4 @@
+import ../services/database_service.dart;
 // lib/screens/escaner_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
