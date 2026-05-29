@@ -1,0 +1,5 @@
+package com.emcc.digital
+
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity: FlutterActivity()
