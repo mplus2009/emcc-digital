@@ -1,7 +1,7 @@
-import ../services/database_service.dart;
+import 'package:emcc_digital/services/database_service.dart';
+
 // lib/screens/tabla_meritos_demeritos.dart
 import 'package:flutter/material.dart';
-import '../services/database_service.dart';
 
 class TablaMeritosDemeritos extends StatefulWidget {
   const TablaMeritosDemeritos({super.key});

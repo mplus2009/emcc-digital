@@ -1,6 +1,6 @@
+import 'package:emcc_digital/services/database_service.dart';
 // lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
-import '../services/database_service.dart';
 import '../widgets/mesh_status_indicator.dart';
 import '../models/usuario.dart';
 import 'login_screen.dart';

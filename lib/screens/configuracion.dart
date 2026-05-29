@@ -1,6 +1,6 @@
+import 'package:emcc_digital/services/database_service.dart';
 // lib/screens/configuracion.dart
 import 'package:flutter/material.dart';
-import '../services/database_service.dart';
 
 class ConfiguracionScreen extends StatefulWidget {
   const ConfiguracionScreen({super.key});

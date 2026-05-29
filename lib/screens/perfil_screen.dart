@@ -1,6 +1,6 @@
+import 'package:emcc_digital/services/database_service.dart';
 // lib/screens/perfil_screen.dart
 import 'package:flutter/material.dart';
-import '../services/database_service.dart';
 
 class PerfilScreen extends StatefulWidget {
   const PerfilScreen({super.key});
