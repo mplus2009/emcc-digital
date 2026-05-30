@@ -27,35 +27,24 @@ class DatabaseService {
     final documentsPath = await getDatabasesPath();
     final path = join(documentsPath, 'emcc_sistema.db');
     
-    print("📁 Ruta de la base de datos: $path");
-    
     final exists = await File(path).exists();
-    print("📁 ¿Base de datos existe? $exists");
     
     if (!exists) {
       try {
-        // Intentar copiar desde assets
         final data = await rootBundle.load('assets/data/data.sqlite');
         final bytes = data.buffer.asUint8List();
         await File(path).writeAsBytes(bytes);
-        print("✅ Base de datos copiada desde assets. Tamaño: ${bytes.length} bytes");
+        print("Base de datos copiada desde assets");
       } catch (e) {
-        print("❌ Error copiando BD: $e");
-        // Crear base de datos nueva
-        final db = await openDatabase(path, version: 1, onCreate: _onCreate);
-        print("✅ Base de datos nueva creada");
-        return db;
+        print("Error copiando BD: $e");
+        return await openDatabase(path, version: 1, onCreate: _onCreate);
       }
     }
     
-    final db = await openDatabase(path);
-    print("✅ Base de datos abierta correctamente");
-    return db;
+    return await openDatabase(path);
   }
 
   static Future<void> _onCreate(Database db, int version) async {
-    print("🆕 Creando base de datos nueva...");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS directiva (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,56 +53,6 @@ class DatabaseService {
       )
     ''');
     
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS estudiante (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT, apellidos TEXT, ci TEXT, password TEXT,
-        grado TEXT, peloton INTEGER, ocupacion TEXT, activo INTEGER DEFAULT 1
-      )
-    ''');
-    
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS profesor (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT, apellidos TEXT, ci TEXT, password TEXT,
-        ocupacion TEXT, activo INTEGER DEFAULT 1
-      )
-    ''');
-    
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS oficial (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT, apellidos TEXT, ci TEXT, password TEXT,
-        ocupacion TEXT, activo INTEGER DEFAULT 1
-      )
-    ''');
-    
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS actividad (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        id_star TEXT, id_end TEXT, tipo TEXT, categoria TEXT,
-        falta_causa TEXT, cantidad INTEGER, fecha TEXT, hora TEXT,
-        leido INTEGER DEFAULT 0, alegacion TEXT, observaciones TEXT,
-        notificador TEXT, sync_enviado INTEGER DEFAULT 0
-      )
-    ''');
-    
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS meritos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        categoria TEXT, subcategoria TEXT, causa TEXT, meritos INTEGER
-      )
-    ''');
-    
-    await db.execute('''
-      CREATE TABLE IF NOT EXISTS demeritos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        categoria TEXT, subcategoria TEXT, falta TEXT,
-        demeritos_10mo INTEGER, demeritos_11_12 INTEGER
-      )
-    ''');
-    
-    // Insertar usuario admin
     await db.insert('directiva', {
       'nombre': 'admin',
       'apellidos': 'admin',
@@ -122,47 +61,25 @@ class DatabaseService {
       'ocupacion': 'director',
       'activo': 1,
     });
-    
-    // Insertar algunos méritos y deméritos de ejemplo
-    await db.insert('meritos', {
-      'categoria': 'Académico',
-      'subcategoria': 'Participación',
-      'causa': 'Participación activa en clase',
-      'meritos': 2,
-    });
-    
-    await db.insert('demeritos', {
-      'categoria': 'Conducta',
-      'subcategoria': 'Disciplina',
-      'falta': 'Llegar tarde a clase',
-      'demeritos_10mo': 1,
-      'demeritos_11_12': 1,
-    });
-    
-    print("✅ Tablas creadas y datos insertados");
+    print("Base de datos creada con usuario admin");
   }
 
   static Future<bool> initSession() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final usuarioJson = prefs.getString('usuario');
-      if (usuarioJson != null) {
-        final Map<String, dynamic> userData = jsonDecode(usuarioJson);
-        _usuarioActual = Usuario(
-          id: userData['id'] ?? 0,
-          nombre: userData['nombre'] ?? '',
-          apellidos: userData['apellidos'] ?? '',
-          ci: userData['ci'] ?? '',
-          cargo: userData['cargo'] ?? 'directiva',
-          ocupacion: userData['ocupacion'],
-          grado: userData['grado'],
-          peloton: userData['peloton'],
-        );
-        print("✅ Sesión restaurada: ${_usuarioActual?.nombre}");
-        return true;
-      }
-    } catch (e) {
-      print("❌ Error restaurando sesión: $e");
+    final prefs = await SharedPreferences.getInstance();
+    final usuarioJson = prefs.getString('usuario');
+    if (usuarioJson != null) {
+      final Map<String, dynamic> userData = jsonDecode(usuarioJson);
+      _usuarioActual = Usuario(
+        id: userData['id'] ?? 0,
+        nombre: userData['nombre'] ?? '',
+        apellidos: userData['apellidos'] ?? '',
+        ci: userData['ci'] ?? '',
+        cargo: userData['cargo'] ?? 'directiva',
+        ocupacion: userData['ocupacion'],
+        grado: userData['grado'],
+        peloton: userData['peloton'],
+      );
+      return true;
     }
     return false;
   }
@@ -171,60 +88,62 @@ class DatabaseService {
     _usuarioActual = usuario;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('usuario', jsonEncode(usuario.toJson()));
-    print("✅ Sesión guardada: ${usuario.nombre}");
   }
 
   static Future<void> logout() async {
     _usuarioActual = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    print("✅ Sesión cerrada");
   }
 
   static Future<Map<String, dynamic>> login(String nombre, String apellidos, String password, String cargo) async {
-    try {
-      print("🔐 Intentando login: $nombre $apellidos - cargo: $cargo");
-      
-      final db = await database;
-      
-      final nom = nombre.trim().toLowerCase();
-      final ape = apellidos.trim().toLowerCase();
-      final pass = password.trim();
-      
-      // Consultar en la tabla correspondiente
-      final results = await db.query(
+    final db = await database;
+    
+    // Limpiar espacios y normalizar a minúsculas
+    final nom = nombre.trim().toLowerCase();
+    final ape = apellidos.trim().toLowerCase();
+    final pass = password.trim();
+    
+    print("Login - Nombre: '$nom', Apellidos: '$ape', Password: '$pass', Cargo: '$cargo'");
+    
+    // Primero intentar con LOWER() para comparación insensible a mayúsculas
+    var results = await db.query(
+      cargo,
+      where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
+      whereArgs: [nom, ape, pass],
+    );
+    
+    print("Resultados con LOWER: ${results.length}");
+    
+    // Si no encuentra, intentar con comparación exacta (por si acaso)
+    if (results.isEmpty) {
+      results = await db.query(
         cargo,
-        where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
-        whereArgs: [nom, ape, pass],
+        where: 'nombre = ? AND apellidos = ? AND password = ? AND activo = 1',
+        whereArgs: [nombre, apellidos, password],
       );
-      
-      print("📊 Resultados encontrados: ${results.length}");
-      
-      if (results.isNotEmpty) {
-        final userData = results.first;
-        print("✅ Usuario encontrado: ${userData['nombre']} ${userData['apellidos']}");
-        
-        final usuario = Usuario(
-          id: userData['id'] as int,
-          nombre: userData['nombre'] as String,
-          apellidos: userData['apellidos'] as String,
-          ci: userData['ci']?.toString() ?? '',
-          cargo: cargo,
-          ocupacion: userData['ocupacion'] as String?,
-          grado: userData['grado'] as String?,
-          peloton: userData['peloton'] as int?,
-        );
-        await saveSession(usuario);
-        return {'success': true, 'usuario': usuario};
-      }
-      
-      print("❌ Usuario no encontrado");
-      return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
-      
-    } catch (e) {
-      print("❌ Error en login: $e");
-      return {'success': false, 'message': 'Error interno: $e'};
+      print("Resultados con exacta: ${results.length}");
     }
+    
+    if (results.isNotEmpty) {
+      final userData = results.first;
+      print("Usuario encontrado: ${userData['nombre']} ${userData['apellidos']}");
+      
+      final usuario = Usuario(
+        id: userData['id'] as int,
+        nombre: userData['nombre'] as String,
+        apellidos: userData['apellidos'] as String,
+        ci: userData['ci'] as String,
+        cargo: cargo,
+        ocupacion: userData['ocupacion'] as String?,
+        grado: userData['grado'] as String?,
+        peloton: userData['peloton'] as int?,
+      );
+      await saveSession(usuario);
+      return {'success': true, 'usuario': usuario};
+    }
+    
+    return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
   }
 
   static Future<List<Map<String, dynamic>>> buscarEstudiantes(String query) async {
@@ -238,13 +157,11 @@ class DatabaseService {
   static Future<List<Map<String, dynamic>>> getCatalogo(String tipo) async {
     final db = await database;
     final tabla = tipo == 'merito' ? 'meritos' : 'demeritos';
-    final results = await db.query(tabla, orderBy: 'id');
-    print("📚 Catálogo $tipo: ${results.length} elementos");
-    return results;
+    return await db.query(tabla, orderBy: 'id');
   }
 
   static Future<Map<String, dynamic>> getDashboard() async {
-    if (_usuarioActual == null) return {'success': false, 'stats': {}, 'semana_actual': []};
+    if (_usuarioActual == null) return {'success': false};
     return {'success': true, 'stats': {'meritos_semana': 0, 'demeritos_semana': 0, 'balance_semana': 0}, 'semana_actual': [], 'alarma_activa': false};
   }
 
@@ -254,7 +171,6 @@ class DatabaseService {
   }
 
   static Future<Map<String, dynamic>> enviarNotificacion(Map<String, dynamic> data) async {
-    print("📤 Enviando notificación: $data");
     return {'success': true};
   }
 }
