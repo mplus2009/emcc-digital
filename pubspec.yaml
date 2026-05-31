@@ -10,15 +10,29 @@ dependencies:
   flutter:
     sdk: flutter
   
+  # Base de datos
   sqflite: ^2.3.0
   path_provider: ^2.1.0
+  
+  # Almacenamiento y preferencias
   shared_preferences: ^2.2.0
+  
+  # QR y escáner
   qr_flutter: ^4.1.0
   mobile_scanner: ^4.0.0
+  
+  # Utilidades
   intl: ^0.18.0
   connectivity_plus: ^5.0.0
   http: ^1.1.0
+  
+  # Permisos
   permission_handler: ^11.0.0
+  
+  # Bluetooth y WiFi Direct (P2P)
+  flutter_bluetooth_serial: ^0.4.0
+  wifi_iot: ^0.3.0
+  network_info_plus: ^4.0.0
 
 dev_dependencies:
   flutter_test:
@@ -28,6 +42,5 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/data/data.sqlite
     - assets/data/
     - assets/images/
