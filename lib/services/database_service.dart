@@ -58,9 +58,9 @@ class DatabaseService {
     final db = await openDatabase(path);
     DebugLogger.log("✅ Base de datos abierta correctamente");
     
-    // Verificar que la tabla directiva existe y tiene datos
     try {
-      final count = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM directiva'));
+      final result = await db.rawQuery('SELECT COUNT(*) as count FROM directiva');
+      final count = result.first['count'] as int? ?? 0;
       DebugLogger.log("📊 Tabla directiva tiene $count registros");
     } catch (e) {
       DebugLogger.error("Error verificando tabla directiva", e);
@@ -136,7 +136,6 @@ class DatabaseService {
     ''');
     DebugLogger.log("✅ Tabla demeritos creada");
     
-    // Insertar usuario admin
     await db.insert('directiva', {
       'nombre': 'admin',
       'apellidos': 'admin',
@@ -147,7 +146,6 @@ class DatabaseService {
     });
     DebugLogger.log("✅ Usuario admin insertado");
     
-    // Insertar algunos méritos de ejemplo
     await db.insert('meritos', {
       'categoria': 'Académico',
       'subcategoria': 'Participación',
@@ -162,7 +160,6 @@ class DatabaseService {
     });
     DebugLogger.log("✅ Méritos de ejemplo insertados");
     
-    // Insertar algunos deméritos de ejemplo
     await db.insert('demeritos', {
       'categoria': 'Conducta',
       'subcategoria': 'Disciplina',
@@ -179,7 +176,7 @@ class DatabaseService {
     });
     DebugLogger.log("✅ Deméritos de ejemplo insertados");
     
-    DebugLogger.log("🎉 Base de datos creada exitosamente con todos los datos");
+    DebugLogger.log("🎉 Base de datos creada exitosamente");
   }
 
   static Future<bool> initSession() async {
@@ -189,16 +186,7 @@ class DatabaseService {
       final usuarioJson = prefs.getString('usuario');
       if (usuarioJson != null) {
         final Map<String, dynamic> userData = jsonDecode(usuarioJson);
-        _usuarioActual = Usuario(
-          id: userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0,
-          nombre: userData['nombre'] ?? '',
-          apellidos: userData['apellidos'] ?? '',
-          ci: userData['ci'] ?? '',
-          cargo: userData['cargo'] ?? 'directiva',
-          ocupacion: userData['ocupacion'],
-          grado: userData['grado'],
-          peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
-        );
+        _usuarioActual = Usuario.fromJson(userData);
         DebugLogger.log("✅ Sesión restaurada: ${_usuarioActual?.nombre} ${_usuarioActual?.apellidos}");
         return true;
       }
@@ -214,7 +202,7 @@ class DatabaseService {
     _usuarioActual = usuario;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('usuario', jsonEncode(usuario.toJson()));
-    DebugLogger.log("✅ Sesión guardada: ${usuario.nombre} ${usuario.apellidos} (ID: ${usuario.id})");
+    DebugLogger.log("✅ Sesión guardada: ${usuario.nombre} ${usuario.apellidos}");
   }
 
   static Future<void> logout() async {
@@ -240,7 +228,6 @@ class DatabaseService {
       final pass = password.trim();
       
       DebugLogger.log("🔍 Buscando en tabla: $cargo");
-      DebugLogger.log("🔍 Condiciones: LOWER(TRIM(nombre)) = '$nom' AND LOWER(TRIM(apellidos)) = '$ape' AND password = '$pass'");
       
       final results = await db.query(
         cargo,
@@ -252,46 +239,51 @@ class DatabaseService {
       
       if (results.isNotEmpty) {
         final userData = results.first;
-        DebugLogger.log("✅ Usuario encontrado!");
-        DebugLogger.log("   - ID (raw): ${userData['id']} (${userData['id'].runtimeType})");
-        DebugLogger.log("   - Nombre: ${userData['nombre']}");
-        DebugLogger.log("   - Apellidos: ${userData['apellidos']}");
-        DebugLogger.log("   - CI: ${userData['ci']}");
-        DebugLogger.log("   - Ocupación: ${userData['ocupacion']}");
         
-        // CONVERSIÓN SEGURA DE TIPOS
-        int userId;
-        if (userData['id'] is int) {
-          userId = userData['id'];
-        } else if (userData['id'] is String) {
-          userId = int.tryParse(userData['id']) ?? 0;
-        } else {
-          userId = 0;
+        // Extraer valores de forma segura
+        final idValue = userData['id'];
+        final userId = idValue is int ? idValue : (idValue is String ? int.tryParse(idValue) ?? 0 : 0);
+        
+        final nombreValue = userData['nombre'] as String? ?? '';
+        final apellidosValue = userData['apellidos'] as String? ?? '';
+        final ciValue = userData['ci']?.toString() ?? '';
+        final ocupacionValue = userData['ocupacion'] as String?;
+        final gradoValue = userData['grado'] as String?;
+        
+        int? pelotonValue;
+        final pelotonRaw = userData['peloton'];
+        if (pelotonRaw is int) {
+          pelotonValue = pelotonRaw;
+        } else if (pelotonRaw is String) {
+          pelotonValue = int.tryParse(pelotonRaw);
         }
         
-        DebugLogger.log("   - ID convertido: $userId");
+        DebugLogger.log("✅ Usuario encontrado!");
+        DebugLogger.log("   - ID: $userId");
+        DebugLogger.log("   - Nombre: $nombreValue");
+        DebugLogger.log("   - Apellidos: $apellidosValue");
         
         final usuario = Usuario(
           id: userId,
-          nombre: userData['nombre'] as String? ?? '',
-          apellidos: userData['apellidos'] as String? ?? '',
-          ci: userData['ci']?.toString() ?? '',
+          nombre: nombreValue,
+          apellidos: apellidosValue,
+          ci: ciValue,
           cargo: cargo,
-          ocupacion: userData['ocupacion'] as String?,
-          grado: userData['grado'] as String?,
-          peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
+          ocupacion: ocupacionValue,
+          grado: gradoValue,
+          peloton: pelotonValue,
         );
         await saveSession(usuario);
         DebugLogger.log("🎉 LOGIN EXITOSO!");
         return {'success': true, 'usuario': usuario};
       }
       
-      DebugLogger.log("❌ LOGIN FALLIDO: Usuario o contraseña incorrectos");
+      DebugLogger.log("❌ LOGIN FALLIDO: Usuario no encontrado");
       return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
       
     } catch (e, stackTrace) {
       DebugLogger.error("Error en login", e);
-      DebugLogger.error("Stack trace", stackTrace);
+      DebugLogger.error("Stack trace", stackTrace.toString());
       return {'success': false, 'message': 'Error interno: $e'};
     }
   }
@@ -322,7 +314,6 @@ class DatabaseService {
       DebugLogger.log("❌ No hay usuario logueado");
       return {'success': false, 'stats': {}, 'semana_actual': []};
     }
-    DebugLogger.log("✅ Dashboard para usuario: ${_usuarioActual?.nombre}");
     return {'success': true, 'stats': {'meritos_semana': 0, 'demeritos_semana': 0, 'balance_semana': 0}, 'semana_actual': [], 'alarma_activa': false};
   }
 
@@ -333,7 +324,7 @@ class DatabaseService {
   }
 
   static Future<Map<String, dynamic>> enviarNotificacion(Map<String, dynamic> data) async {
-    DebugLogger.log("📤 Enviando notificación: ${data['actividades']?.length} actividades a ${data['destinatarios']?.length} destinatarios");
+    DebugLogger.log("📤 Enviando notificación");
     return {'success': true};
   }
 }
