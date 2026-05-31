@@ -1,5 +1,3 @@
-import 'package:emcc_digital/services/database_service.dart';
-
 // lib/screens/escaner_screen.dart
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -12,14 +10,31 @@ class EscanerScreen extends StatefulWidget {
   State<EscanerScreen> createState() => _EscanerScreenState();
 }
 
-class _EscanerScreenState extends State<EscanerScreen> {
+class _EscanerScreenState extends State<EscanerScreen> with SingleTickerProviderStateMixin {
   final MobileScannerController _controller = MobileScannerController();
   List<Map<String, dynamic>> _escaneados = [];
   bool _procesando = false;
+  late AnimationController _animationController;
+  late Animation<double> _scanAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+    _scanAnimation = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.linear,
+    ));
+    _animationController.repeat();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -53,7 +68,7 @@ class _EscanerScreenState extends State<EscanerScreen> {
       _showSnackBar('Error al procesar QR', Colors.red);
     }
     
-    Future.delayed(const Duration(seconds: 2), () {
+    Future.delayed(const Duration(seconds: 1), () {
       if (mounted) setState(() => _procesando = false);
     });
   }
@@ -93,28 +108,32 @@ class _EscanerScreenState extends State<EscanerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.black,
       appBar: AppBar(
-        title: Row(
-          children: [
-            const Text('Escanear QR'),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                '${_escaneados.length}',
-                style: const TextStyle(fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
+        title: const Text('Escanear QR', style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context, _escaneados),
         ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFF10B981),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Text('${_escaneados.length}', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+        ],
       ),
       body: Stack(
         children: [
@@ -128,98 +147,177 @@ class _EscanerScreenState extends State<EscanerScreen> {
               }
             },
           ),
-          Center(
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(color: const Color(0xFF10B981), width: 3),
-                borderRadius: BorderRadius.circular(20),
+          Container(
+            color: Colors.black.withOpacity(0.4),
+            child: Center(
+              child: Container(
+                width: 280,
+                height: 280,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF10B981), width: 3),
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                child: Stack(
+                  children: [
+                    _buildCorner(Icons.crop_square, 20, Alignment.topLeft),
+                    _buildCorner(Icons.crop_square, 20, Alignment.topRight),
+                    _buildCorner(Icons.crop_square, 20, Alignment.bottomLeft),
+                    _buildCorner(Icons.crop_square, 20, Alignment.bottomRight),
+                    AnimatedBuilder(
+                      animation: _scanAnimation,
+                      builder: (context, child) {
+                        return Positioned(
+                          left: 0,
+                          right: 0,
+                          top: _scanAnimation.value * 280,
+                          child: Container(
+                            height: 2,
+                            color: const Color(0xFF10B981),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 40),
+                              height: 2,
+                              color: const Color(0xFF10B981),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
-              child: Stack(
+            ),
+          ),
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Column(
                 children: [
-                  Positioned(
-                    top: -3,
-                    left: -3,
-                    child: Container(
-                      width: 25,
-                      height: 25,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Colors.white, width: 4),
-                          left: BorderSide(color: Colors.white, width: 4),
-                        ),
-                        borderRadius: BorderRadius.only(topLeft: Radius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    top: -3,
-                    right: -3,
-                    child: Container(
-                      width: 25,
-                      height: 25,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          top: BorderSide(color: Colors.white, width: 4),
-                          right: BorderSide(color: Colors.white, width: 4),
-                        ),
-                        borderRadius: BorderRadius.only(topRight: Radius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -3,
-                    left: -3,
-                    child: Container(
-                      width: 25,
-                      height: 25,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: Colors.white, width: 4),
-                          left: BorderSide(color: Colors.white, width: 4),
-                        ),
-                        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: -3,
-                    right: -3,
-                    child: Container(
-                      width: 25,
-                      height: 25,
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(color: Colors.white, width: 4),
-                          right: BorderSide(color: Colors.white, width: 4),
-                        ),
-                        borderRadius: BorderRadius.only(bottomRight: Radius.circular(8)),
-                      ),
-                    ),
+                  const Icon(Icons.qr_code_scanner, color: Colors.white, size: 40),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Coloca el QR dentro del recuadro',
+                    style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 16),
                   ),
                 ],
               ),
             ),
           ),
-          const Positioned(
-            bottom: 100,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: Text(
-                'Coloca el QR dentro del recuadro',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  shadows: [Shadow(color: Colors.black, blurRadius: 10)],
+          if (_procesando)
+            Container(
+              color: Colors.black.withOpacity(0.6),
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(color: Color(0xFF10B981)),
+                    SizedBox(height: 16),
+                    Text('Procesando...', style: TextStyle(color: Colors.white)),
+                  ],
                 ),
               ),
             ),
-          ),
-          if (_procesando)
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
+          if (_escaneados.isNotEmpty)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.check_circle, color: Color(0xFF10B981)),
+                        const SizedBox(width: 8),
+                        Text('Escaneados (${_escaneados.length})', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 120,
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _escaneados.length,
+                        itemBuilder: (context, index) {
+                          final e = _escaneados[index];
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5F7FA),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: const Color(0xFF1E3C72),
+                                  child: Text(e['nombre'][0], style: const TextStyle(color: Colors.white)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(e['nombre'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                                      Text('CI: ${e['ci']} | Grado: ${e['grado']}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.close, color: Colors.red),
+                                  onPressed: () => setState(() => _escaneados.removeAt(index)),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () => Navigator.pop(context, _escaneados),
+                        icon: const Icon(Icons.check_circle),
+                        label: const Text('Finalizar y Continuar'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildCorner(IconData icon, double size, Alignment alignment) {
+    return Positioned(
+      left: alignment.x == -1 ? -3 : null,
+      right: alignment.x == 1 ? -3 : null,
+      top: alignment.y == -1 ? -3 : null,
+      bottom: alignment.y == 1 ? -3 : null,
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFF10B981), width: 2),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Icon(icon, color: const Color(0xFF10B981), size: 14),
       ),
     );
   }
