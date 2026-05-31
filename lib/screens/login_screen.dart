@@ -20,13 +20,13 @@ class _LoginScreenState extends State<LoginScreen> {
   String _cargo = '';
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _showDebug = true; // Mostrar panel de depuración
+  bool _showDebug = false; // ← Desactivado por defecto (cambiar a true para activar)
 
   @override
   void initState() {
     super.initState();
     DebugLogger.log("📱 Pantalla de Login iniciada");
-    DebugLogger.log("💡 Panel de depuración ACTIVADO - Toca el botón DEBUG para ver logs");
+    // Para activar el panel de depuración, toca 5 veces el logo de la app
   }
 
   @override
@@ -36,6 +36,22 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.dispose();
     super.dispose();
   }
+
+  // Método secreto para activar debug (tocar 5 veces el logo)
+  void _onLogoPressed() {
+    _tapCount++;
+    if (_tapCount >= 5) {
+      setState(() {
+        _showDebug = !_showDebug;
+        _tapCount = 0;
+      });
+      DebugLogger.log(_showDebug ? "🔍 Panel de depuración ACTIVADO" : "🔍 Panel de depuración DESACTIVADO");
+    }
+    Future.delayed(const Duration(seconds: 2), () {
+      _tapCount = 0;
+    });
+  }
+  int _tapCount = 0;
 
   Future<void> _loginConQR() async {
     DebugLogger.log("📷 Intentando login con QR...");
@@ -50,8 +66,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
     
     final datos = resultado.first;
-    DebugLogger.log("📷 Datos del QR: ${datos['nombre']} ${datos['apellidos']}");
-    
     setState(() => _isLoading = true);
     
     final response = await DatabaseService.login(
@@ -71,44 +85,31 @@ class _LoginScreenState extends State<LoginScreen> {
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
     } else {
-      DebugLogger.error("Login QR fallido: ${response['message']}");
       _showSnackBar(response['message'] ?? 'Error en QR', Colors.red);
     }
   }
 
   Future<void> _login() async {
-    DebugLogger.log("🔐 === NUEVO INTENTO DE LOGIN MANUAL ===");
-    
-    if (!_formKey.currentState!.validate()) {
-      DebugLogger.log("❌ Validación del formulario falló");
-      return;
-    }
+    if (!_formKey.currentState!.validate()) return;
     
     setState(() => _isLoading = true);
     
-    final nombre = _nombreController.text.trim();
-    final apellidos = _apellidosController.text.trim();
-    final password = _passwordController.text;
-    
-    DebugLogger.log("📝 Datos ingresados:");
-    DebugLogger.log("   Nombre: '$nombre'");
-    DebugLogger.log("   Apellidos: '$apellidos'");
-    DebugLogger.log("   Password: '${password.length} caracteres'");
-    DebugLogger.log("   Cargo: '$_cargo'");
-    
-    final response = await DatabaseService.login(nombre, apellidos, password, _cargo);
+    final response = await DatabaseService.login(
+      _nombreController.text.trim(),
+      _apellidosController.text.trim(),
+      _passwordController.text,
+      _cargo,
+    );
     
     if (!mounted) return;
     setState(() => _isLoading = false);
     
     if (response['success'] == true) {
-      DebugLogger.log("🎉 LOGIN EXITOSO! Redirigiendo al dashboard...");
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const DashboardScreen()),
       );
     } else {
-      DebugLogger.error("LOGIN FALLIDO: ${response['message']}");
       _showSnackBar(response['message'] ?? 'Usuario o contraseña incorrectos', Colors.red);
     }
   }
@@ -121,7 +122,6 @@ class _LoginScreenState extends State<LoginScreen> {
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         margin: const EdgeInsets.all(16),
-        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -162,24 +162,27 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Column(
-                            children: [
-                              Icon(Icons.school, size: 50, color: Color(0xFF1E3C72)),
-                              SizedBox(height: 8),
-                              Text(
-                                'Acceso',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF1E3C72),
+                          GestureDetector(
+                            onTap: _onLogoPressed,
+                            child: const Column(
+                              children: [
+                                Icon(Icons.school, size: 50, color: Color(0xFF1E3C72)),
+                                SizedBox(height: 8),
+                                Text(
+                                  'Acceso',
+                                  style: TextStyle(
+                                    fontSize: 32,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF1E3C72),
+                                  ),
                                 ),
-                              ),
-                              SizedBox(height: 4),
-                              Text(
-                                'Inicia sesión en el sistema',
-                                style: TextStyle(fontSize: 15, color: Color(0xFF666666)),
-                              ),
-                            ],
+                                SizedBox(height: 4),
+                                Text(
+                                  'Inicia sesión en el sistema',
+                                  style: TextStyle(fontSize: 15, color: Color(0xFF666666)),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 35),
                           Container(
@@ -321,15 +324,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          // Panel de depuración flotante
-          Positioned(
-            bottom: 10,
-            left: 10,
-            right: 10,
-            child: GestureDetector(
-              onTap: () {
-                setState(() => _showDebug = !_showDebug);
-              },
+          // Panel de depuración (oculto por defecto, aparece al tocar 5 veces el logo)
+          if (_showDebug)
+            Positioned(
+              bottom: 10,
+              left: 10,
+              right: 10,
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.9),
@@ -342,35 +342,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
-                            _showDebug ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
-                            color: Colors.white,
-                            size: 20,
-                          ),
+                          const Icon(Icons.bug_report, color: Colors.amber, size: 16),
                           const SizedBox(width: 8),
                           const Text(
                             "DEBUG PANEL",
                             style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold),
                           ),
                           const SizedBox(width: 8),
-                          Icon(
-                            _showDebug ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_up,
-                            color: Colors.white,
-                            size: 20,
+                          GestureDetector(
+                            onTap: () => setState(() => _showDebug = false),
+                            child: const Icon(Icons.close, color: Colors.white, size: 16),
                           ),
                         ],
                       ),
                     ),
-                    if (_showDebug)
-                      SizedBox(
-                        height: 250,
-                        child: DebugLogger.buildDebugPanel(),
-                      ),
+                    SizedBox(
+                      height: 250,
+                      child: DebugLogger.buildDebugPanel(),
+                    ),
                   ],
                 ),
               ),
             ),
-          ),
         ],
       ),
     );
