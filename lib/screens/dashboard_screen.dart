@@ -302,7 +302,6 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
                 ),
                 const SizedBox(height: 20),
               ],
-              
               // Buscador para profesores/oficiales
               if (puedeNotificar) ...[
                 Container(
@@ -435,7 +434,10 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           Container(
             width: 50,
             height: 50,
-            decoration: const BoxDecoration(gradient: LinearGradient(colors: [Color(0xFF667EEA), Color(0xFF764BA2)]), borderRadius: BorderRadius.circular(14)),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF667EEA), Color(0xFF764BA2)]),
+              borderRadius: BorderRadius.circular(14),
+            ),
             child: const Icon(Icons.person, color: Colors.white, size: 28),
           ),
           const SizedBox(width: 12),
