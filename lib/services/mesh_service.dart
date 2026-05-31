@@ -115,7 +115,7 @@ class MeshService {
   static Future<void> _initWiFiDirect() async {
     try {
       // Obtener IP local
-      final info = NetworkInfoPlus();
+      final NetworkInfo info = NetworkInfo();
       _localIp = await info.getWifiIP();
       DebugLogger.log("📶 IP local: $_localIp");
       
@@ -177,10 +177,8 @@ class MeshService {
         
         try {
           final client = http.Client();
-          final response = await client.get(
-            Uri.parse('http://$peerIp:$_port/ping'),
-            timeout: Duration(milliseconds: 500),
-          );
+          final request = http.Request('GET', Uri.parse('http://$peerIp:$_port/ping'));
+          final response = await client.send(request);
           if (response.statusCode == 200 && !_peers.contains(peerIp)) {
             _peers.add(peerIp);
             _notifyListeners();
@@ -202,7 +200,6 @@ class MeshService {
         final db = await DatabaseService.database;
         final actividad = data['activity'];
         
-        // Verificar si ya existe
         final exists = await db.query(
           'actividad',
           where: 'id = ?',
@@ -228,22 +225,14 @@ class MeshService {
       'timestamp': DateTime.now().toIso8601String(),
     };
     
-    // Enviar por Bluetooth
     for (var peer in _peers) {
-      // Aquí iría la conexión Bluetooth real
-      DebugLogger.log("📡 Enviando a $peer");
-    }
-    
-    // Enviar por HTTP a peers WiFi
-    for (var peer in _peers) {
-      if (peer.contains('.')) { // Es IP
+      if (peer.contains('.')) {
         try {
           final client = http.Client();
-          await client.post(
-            Uri.parse('http://$peer:$_port/sync'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(data),
-          ).timeout(Duration(seconds: 3));
+          final request = http.Request('POST', Uri.parse('http://$peer:$_port/sync'));
+          request.headers['Content-Type'] = 'application/json';
+          request.body = jsonEncode(data);
+          await client.send(request);
           client.close();
           DebugLogger.log("✅ Enviado a $peer");
         } catch (e) {
