@@ -190,14 +190,14 @@ class DatabaseService {
       if (usuarioJson != null) {
         final Map<String, dynamic> userData = jsonDecode(usuarioJson);
         _usuarioActual = Usuario(
-          id: userData['id'] ?? 0,
+          id: userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0,
           nombre: userData['nombre'] ?? '',
           apellidos: userData['apellidos'] ?? '',
           ci: userData['ci'] ?? '',
           cargo: userData['cargo'] ?? 'directiva',
           ocupacion: userData['ocupacion'],
           grado: userData['grado'],
-          peloton: userData['peloton'],
+          peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
         );
         DebugLogger.log("✅ Sesión restaurada: ${_usuarioActual?.nombre} ${_usuarioActual?.apellidos}");
         return true;
@@ -250,37 +250,36 @@ class DatabaseService {
       
       DebugLogger.log("📊 Resultados encontrados: ${results.length}");
       
-      if (results.isEmpty) {
-        DebugLogger.log("❌ No se encontraron usuarios. Verificando si la tabla existe...");
-        try {
-          final count = await db.query(cargo);
-          DebugLogger.log("📊 La tabla $cargo tiene ${count.length} registros totales");
-          if (count.isNotEmpty) {
-            DebugLogger.log("📊 Primer registro: ${count.first['nombre']} ${count.first['apellidos']}");
-          }
-        } catch (e) {
-          DebugLogger.error("Error verificando tabla", e);
-        }
-      }
-      
       if (results.isNotEmpty) {
         final userData = results.first;
         DebugLogger.log("✅ Usuario encontrado!");
-        DebugLogger.log("   - ID: ${userData['id']}");
+        DebugLogger.log("   - ID (raw): ${userData['id']} (${userData['id'].runtimeType})");
         DebugLogger.log("   - Nombre: ${userData['nombre']}");
         DebugLogger.log("   - Apellidos: ${userData['apellidos']}");
         DebugLogger.log("   - CI: ${userData['ci']}");
         DebugLogger.log("   - Ocupación: ${userData['ocupacion']}");
         
+        // CONVERSIÓN SEGURA DE TIPOS
+        int userId;
+        if (userData['id'] is int) {
+          userId = userData['id'];
+        } else if (userData['id'] is String) {
+          userId = int.tryParse(userData['id']) ?? 0;
+        } else {
+          userId = 0;
+        }
+        
+        DebugLogger.log("   - ID convertido: $userId");
+        
         final usuario = Usuario(
-          id: userData['id'] as int,
-          nombre: userData['nombre'] as String,
-          apellidos: userData['apellidos'] as String,
+          id: userId,
+          nombre: userData['nombre'] as String? ?? '',
+          apellidos: userData['apellidos'] as String? ?? '',
           ci: userData['ci']?.toString() ?? '',
           cargo: cargo,
           ocupacion: userData['ocupacion'] as String?,
           grado: userData['grado'] as String?,
-          peloton: userData['peloton'] as int?,
+          peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
         );
         await saveSession(usuario);
         DebugLogger.log("🎉 LOGIN EXITOSO!");
@@ -290,8 +289,9 @@ class DatabaseService {
       DebugLogger.log("❌ LOGIN FALLIDO: Usuario o contraseña incorrectos");
       return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
       
-    } catch (e) {
+    } catch (e, stackTrace) {
       DebugLogger.error("Error en login", e);
+      DebugLogger.error("Stack trace", stackTrace);
       return {'success': false, 'message': 'Error interno: $e'};
     }
   }
