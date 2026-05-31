@@ -44,3 +44,6 @@ flutter:
   assets:
     - assets/data/
     - assets/images/
+
+  # Provider para modo oscuro
+  provider: ^6.1.1

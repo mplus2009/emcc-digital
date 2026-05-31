@@ -1,7 +1,7 @@
 // lib/screens/notificar_screen.dart
 import 'package:flutter/material.dart';
 import 'package:emcc_digital/services/database_service.dart';
-import 'package:emcc_digital/utils/role_checker.dart';
+import 'package:emcc_digital/services/debug_logger.dart';
 import 'escaner_screen.dart';
 
 class NotificarScreen extends StatefulWidget {
@@ -18,7 +18,6 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   List<Map<String, dynamic>> _catMeritos = [];
   List<Map<String, dynamic>> _catDemeritos = [];
   List<Map<String, dynamic>> _search = [];
-  List<Map<String, dynamic>> _searchActividades = [];
   String _tipo = 'merito';
   bool _loading = true;
   bool _sending = false;
@@ -29,21 +28,34 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   final _obs = TextEditingController();
   final _cantidadController = TextEditingController(text: '1');
   Map<String, dynamic>? _sel;
-  double _s10 = 1;
-  double _s11 = 1;
+  int _rango10mo = 1;
+  int _rango11_12 = 1;
   String? _catFiltro;
   late TabController _tabController;
+  
+  bool _usandoCuentaTemporal = false;
+  String _notificadorNombre = '';
+  String _notificadorCargo = '';
+  final _tempNombreController = TextEditingController();
+  final _tempPasswordController = TextEditingController();
+  bool _mostrarTemporalForm = false;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _fc.text = DateTime.now().toString().split(' ')[0];
     _hc.text = DateTime.now().toString().substring(11, 16);
     if (widget.destinatarioPrecargado != null) {
       _dest.add(widget.destinatarioPrecargado!);
     }
     _load();
+    
+    final u = DatabaseService.usuario;
+    if (u != null) {
+      _notificadorNombre = u.nombreCompleto;
+      _notificadorCargo = u.cargo;
+    }
   }
 
   Future<void> _load() async {
@@ -58,8 +70,8 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   List<Map<String, dynamic>> get _filteredActividades {
     final query = _searchActController.text.toLowerCase();
     final filtered = _catActual.where((a) {
-      final nombre = _tipo == 'merito' ? a['causa'] : a['falta'];
-      final categoria = a['categoria'];
+      final nombre = _tipo == 'merito' ? (a['causa'] ?? '') : (a['falta'] ?? '');
+      final categoria = a['categoria'] ?? '';
       final matchesQuery = query.isEmpty || nombre.toLowerCase().contains(query);
       final matchesCategory = _catFiltro == null || categoria == _catFiltro;
       return matchesQuery && matchesCategory;
@@ -67,15 +79,11 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     return filtered;
   }
 
-  int _calcCantidad() {
+  int _getCantidadParaGrado(String grado) {
     if (_tipo == 'merito') {
       return int.tryParse(_cantidadController.text) ?? 1;
     }
-    final hay10 = _dest.any((d) => d['grado'] == '10mo');
-    final hay11 = _dest.any((d) => d['grado'] != '10mo');
-    if (hay10 && hay11) return _s10.toInt() + _s11.toInt();
-    if (hay10) return _s10.toInt();
-    return _s11.toInt();
+    return grado == '10mo' ? _rango10mo : _rango11_12;
   }
 
   @override
@@ -86,8 +94,64 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     _hc.dispose();
     _obs.dispose();
     _cantidadController.dispose();
+    _tempNombreController.dispose();
+    _tempPasswordController.dispose();
     _tabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _verificarTemporal() async {
+    final nombreCompleto = _tempNombreController.text.trim();
+    final password = _tempPasswordController.text.trim();
+    if (nombreCompleto.isEmpty || password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Complete nombre y contraseña'), backgroundColor: Colors.orange));
+      return;
+    }
+    
+    final partes = nombreCompleto.split(' ');
+    final nombre = partes.first;
+    final apellidos = partes.skip(1).join(' ');
+    
+    final db = await DatabaseService.database;
+    for (final cargo in ['directiva', 'profesor', 'oficial', 'estudiante']) {
+      final result = await db.query(
+        cargo,
+        where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
+        whereArgs: [nombre.toLowerCase(), apellidos.toLowerCase(), password],
+      );
+      if (result.isNotEmpty) {
+        setState(() {
+          _usandoCuentaTemporal = true;
+          _notificadorNombre = '$nombre $apellidos';
+          _notificadorCargo = cargo;
+          _mostrarTemporalForm = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cuenta temporal verificada'), backgroundColor: Colors.green));
+        return;
+      }
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
+  }
+
+  Future<void> _escanearQRTemporal() async {
+    final result = await Navigator.push<List<Map<String, dynamic>>>(
+      context,
+      MaterialPageRoute(builder: (_) => const EscanerScreen()),
+    );
+    if (result != null && result.isNotEmpty) {
+      final datos = result.first;
+      setState(() {
+        _usandoCuentaTemporal = true;
+        _notificadorNombre = '${datos['nombre']} ${datos['apellidos']}';
+        _notificadorCargo = datos['cargo'] ?? 'estudiante';
+        _mostrarTemporalForm = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cuenta temporal cargada desde QR'), backgroundColor: Colors.green));
+    }
   }
 
   @override
@@ -115,6 +179,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
           tabs: const [
             Tab(icon: Icon(Icons.people), text: 'Destinatarios'),
             Tab(icon: Icon(Icons.list_alt), text: 'Actividades'),
+            Tab(icon: Icon(Icons.person), text: 'Notificador'),
             Tab(icon: Icon(Icons.settings), text: 'Detalles'),
           ],
         ),
@@ -123,8 +188,9 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
         controller: _tabController,
         children: [
           _buildDestinatariosTab(),
-          _buildActividadesTab(cats),
-          _buildDetallesTab(puede, hay10, hay11),
+          _buildActividadesTab(cats, hay10, hay11),
+          _buildNotificadorTab(),
+          _buildDetallesTab(puede),
         ],
       ),
       bottomNavigationBar: _buildBottomBar(puede),
@@ -140,28 +206,21 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Destinatarios agregados', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('Destinatarios', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 12),
                     if (_dest.isEmpty)
                       const Center(child: Text('No hay destinatarios', style: TextStyle(color: Colors.grey)))
                     else
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: _dest.asMap().entries.map((entry) => Chip(
-                          label: Text(entry.value['nombre'], style: const TextStyle(color: Colors.white)),
-                          backgroundColor: const Color(0xFF1E3C72),
-                          deleteIcon: const Icon(Icons.close, color: Colors.white70, size: 18),
-                          onDeleted: () => setState(() => _dest.removeAt(entry.key)),
-                        )).toList(),
-                      ),
+                      Wrap(spacing: 8, runSpacing: 8, children: _dest.asMap().entries.map((entry) => Chip(
+                        label: Text(entry.value['nombre'], style: const TextStyle(color: Colors.white)),
+                        backgroundColor: const Color(0xFF1E3C72),
+                        deleteIcon: const Icon(Icons.close, color: Colors.white70, size: 18),
+                        onDeleted: () => setState(() => _dest.removeAt(entry.key)),
+                      )).toList()),
                     const SizedBox(height: 20),
                     const Text('Buscar estudiantes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 12),
@@ -196,10 +255,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
                             'ci': '${e['CI']}',
                             'grado': e['grado'] ?? '10mo',
                           });
-                          setState(() {
-                            _search = [];
-                            _bc.clear();
-                          });
+                          setState(() { _search = []; _bc.clear(); });
                         },
                       ),
                     )),
@@ -207,19 +263,12 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
                     OutlinedButton.icon(
                       onPressed: () async {
                         final result = await Navigator.push<List<Map<String, dynamic>>>(
-                          context,
-                          MaterialPageRoute(builder: (_) => const EscanerScreen()),
-                        );
-                        if (result != null && mounted) {
-                          setState(() => _dest.addAll(result));
-                        }
+                          context, MaterialPageRoute(builder: (_) => const EscanerScreen()));
+                        if (result != null && mounted) setState(() => _dest.addAll(result));
                       },
                       icon: const Icon(Icons.qr_code_scanner),
                       label: const Text('Escanear QR'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      ),
+                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                     ),
                   ],
                 ),
@@ -231,7 +280,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildActividadesTab(Set<String> cats) {
+  Widget _buildActividadesTab(Set<String> cats, bool hay10, bool hay11) {
     return Column(
       children: [
         Expanded(
@@ -240,14 +289,11 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Actividades agregadas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text('Actividades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 12),
                     if (_acts.isEmpty)
                       const Center(child: Text('No hay actividades', style: TextStyle(color: Colors.grey)))
@@ -278,29 +324,20 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(value: 'merito', label: Text('Mérito'), icon: Icon(Icons.emoji_events)),
-                              ButtonSegment(value: 'demerito', label: Text('Demérito'), icon: Icon(Icons.warning_amber)),
-                            ],
-                            selected: {_tipo},
-                            onSelectionChanged: (Set<String> newSelection) {
-                              setState(() => _tipo = newSelection.first);
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
+                    Row(children: [
+                      Expanded(child: SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'merito', label: Text('Mérito'), icon: Icon(Icons.emoji_events)),
+                          ButtonSegment(value: 'demerito', label: Text('Demérito'), icon: Icon(Icons.warning_amber)),
+                        ],
+                        selected: {_tipo},
+                        onSelectionChanged: (Set<String> newSelection) => setState(() => _tipo = newSelection.first),
+                      )),
+                    ]),
                     const SizedBox(height: 16),
                     if (_tipo == 'merito')
                       TextField(
@@ -326,6 +363,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
                         prefixIcon: const Icon(Icons.search),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
                       ),
+                      onChanged: (_) => setState(() {}),
                     ),
                     const SizedBox(height: 12),
                     ConstrainedBox(
@@ -348,27 +386,54 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
                         },
                       ),
                     ),
-                    if (_sel != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            _acts.add({
-                              'nombre': _tipo == 'merito' ? _sel!['causa'] : _sel!['falta'],
-                              'cantidad': _calcCantidad(),
-                              'tipo': _tipo,
-                              'categoria': _sel!['categoria'],
-                            });
-                            setState(() => _sel = null);
-                          },
-                          icon: const Icon(Icons.add),
-                          label: const Text('Agregar actividad'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    if (_sel != null) ...[
+                      const SizedBox(height: 16),
+                      if (_tipo == 'demerito' && (hay10 || hay11))
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(12)),
+                          child: Column(
+                            children: [
+                              const Text('Valores por grado', style: TextStyle(fontWeight: FontWeight.bold)),
+                              if (hay10) ...[
+                                const SizedBox(height: 8),
+                                Row(children: [
+                                  const Text('10mo Grado:'),
+                                  const Spacer(),
+                                  IconButton(onPressed: () => setState(() => _rango10mo = _rango10mo > 1 ? _rango10mo - 1 : 1), icon: const Icon(Icons.remove)),
+                                  Text('$_rango10mo', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  IconButton(onPressed: () => setState(() => _rango10mo = _rango10mo < 3 ? _rango10mo + 1 : 3), icon: const Icon(Icons.add)),
+                                ]),
+                              ],
+                              if (hay11) ...[
+                                const SizedBox(height: 8),
+                                Row(children: [
+                                  const Text('11no/12mo Grado:'),
+                                  const Spacer(),
+                                  IconButton(onPressed: () => setState(() => _rango11_12 = _rango11_12 > 1 ? _rango11_12 - 1 : 1), icon: const Icon(Icons.remove)),
+                                  Text('$_rango11_12', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                                  IconButton(onPressed: () => setState(() => _rango11_12 = _rango11_12 < 3 ? _rango11_12 + 1 : 3), icon: const Icon(Icons.add)),
+                                ]),
+                              ],
+                            ],
                           ),
                         ),
+                      const SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          _acts.add({
+                            'nombre': _tipo == 'merito' ? _sel!['causa'] : _sel!['falta'],
+                            'cantidad': _tipo == 'merito' ? (int.tryParse(_cantidadController.text) ?? 1) : 1,
+                            'tipo': _tipo,
+                            'categoria': _sel!['categoria'],
+                          });
+                          setState(() => _sel = null);
+                        },
+                        icon: const Icon(Icons.add),
+                        label: const Text('Agregar actividad'),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -379,7 +444,86 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildDetallesTab(bool puede, bool hay10, bool hay11) {
+  Widget _buildNotificadorTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Quién notifica', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  const Icon(Icons.account_circle, size: 48, color: Color(0xFF1E3C72)),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_notificadorNombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        Text(_notificadorCargo, style: const TextStyle(color: Colors.grey)),
+                        if (_usandoCuentaTemporal)
+                          const Chip(
+                            label: Text('Temporal', style: TextStyle(fontSize: 12)),
+                            backgroundColor: Colors.orange,
+                            labelStyle: TextStyle(color: Colors.white),
+                          ),
+                      ],
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => setState(() => _mostrarTemporalForm = !_mostrarTemporalForm),
+                    icon: const Icon(Icons.swap_horiz),
+                    label: const Text('Cambiar'),
+                  ),
+                ],
+              ),
+              if (_mostrarTemporalForm) ...[
+                const Divider(),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _tempNombreController,
+                  decoration: const InputDecoration(labelText: 'Nombre y Apellidos', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _tempPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _verificarTemporal,
+                        icon: const Icon(Icons.verified),
+                        label: const Text('Verificar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _escanearQRTemporal,
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('Escanear QR'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDetallesTab(bool puede) {
     return Column(
       children: [
         Expanded(
@@ -388,88 +532,29 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text('Fecha y Hora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _fc,
-                            decoration: const InputDecoration(labelText: 'Fecha', border: OutlineInputBorder()),
-                            readOnly: true,
-                            onTap: () async {
-                              final d = await showDatePicker(
-                                context: context,
-                                initialDate: DateTime.now(),
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime(2030),
-                              );
-                              if (d != null) _fc.text = d.toString().split(' ')[0];
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextField(
-                            controller: _hc,
-                            decoration: const InputDecoration(labelText: 'Hora', border: OutlineInputBorder()),
-                            readOnly: true,
-                            onTap: () async {
-                              final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                              if (t != null) _hc.text = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    if (_tipo == 'demerito' && _sel != null && (hay10 || hay11)) ...[
-                      const Text('Valores por grado', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      if (hay10)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(12)),
-                          child: Column(
-                            children: [
-                              const Text('10mo Grado', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Slider(min: 1, max: 3, value: _s10, onChanged: (v) => setState(() => _s10 = v)),
-                              Text('${_s10.toInt()} puntos'),
-                            ],
-                          ),
-                        ),
-                      if (hay11) const SizedBox(height: 12),
-                      if (hay11)
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(12)),
-                          child: Column(
-                            children: [
-                              const Text('11no/12mo Grado', style: TextStyle(fontWeight: FontWeight.bold)),
-                              Slider(min: 1, max: 3, value: _s11, onChanged: (v) => setState(() => _s11 = v)),
-                              Text('${_s11.toInt()} puntos'),
-                            ],
-                          ),
-                        ),
-                    ],
+                    Row(children: [
+                      Expanded(child: TextField(controller: _fc, decoration: const InputDecoration(labelText: 'Fecha', border: OutlineInputBorder()), readOnly: true,
+                        onTap: () async {
+                          final d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030));
+                          if (d != null) _fc.text = d.toString().split(' ')[0];
+                        })),
+                      const SizedBox(width: 12),
+                      Expanded(child: TextField(controller: _hc, decoration: const InputDecoration(labelText: 'Hora', border: OutlineInputBorder()), readOnly: true,
+                        onTap: () async {
+                          final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+                          if (t != null) _hc.text = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+                        })),
+                    ]),
                     const SizedBox(height: 16),
                     const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: _obs,
-                      maxLines: 3,
-                      decoration: const InputDecoration(
-                        hintText: 'Notas adicionales...',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
+                    TextField(controller: _obs, maxLines: 3, decoration: const InputDecoration(hintText: 'Notas adicionales...', border: OutlineInputBorder())),
                   ],
                 ),
               ),
@@ -483,22 +568,14 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   Widget _buildBottomBar(bool puede) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-      ),
+      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
       child: SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
           onPressed: puede && !_sending ? _enviarNotificacion : null,
           icon: _sending ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send),
           label: Text(_sending ? 'Enviando...' : 'Enviar Notificación'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF10B981),
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 16)),
         ),
       ),
     );
@@ -507,15 +584,24 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   Future<void> _enviarNotificacion() async {
     setState(() => _sending = true);
     final u = DatabaseService.usuario;
+    
+    final rangos = <String, int>{};
+    if (_tipo == 'demerito' && _sel != null) {
+      rangos['10mo'] = _rango10mo;
+      rangos['11_12'] = _rango11_12;
+    }
+    
     await DatabaseService.enviarNotificacion({
       'destinatarios': _dest,
       'actividades': _acts,
       'fecha': _fc.text,
       'hora': _hc.text,
-      'id_star': u?.id,
-      'cargo_notificador': u?.cargo,
+      'id_star': _usandoCuentaTemporal ? null : u?.id,
+      'cargo_notificador': _usandoCuentaTemporal ? _notificadorCargo : u?.cargo,
       'observaciones': _obs.text,
+      'rangos': rangos,
     });
+    
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notificación enviada'), backgroundColor: Colors.green));
       setState(() {

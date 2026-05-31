@@ -19,59 +19,36 @@ class DatabaseService {
   static bool get isLoggedIn => _usuarioActual != null;
 
   static Future<Database> get database async {
-    DebugLogger.log("📁 Obteniendo instancia de database...");
-    if (_db != null) {
-      DebugLogger.log("✅ Database ya inicializada");
-      return _db!;
-    }
+    if (_db != null) return _db!;
     _db = await _initDatabase();
     return _db!;
   }
 
   static Future<Database> _initDatabase() async {
-    DebugLogger.log("📁 Inicializando base de datos...");
-    
     final documentsPath = await getDatabasesPath();
     final path = join(documentsPath, 'emcc_sistema.db');
     
-    DebugLogger.log("📁 Ruta: $path");
-    
     final exists = await File(path).exists();
-    DebugLogger.log("📁 ¿Existe? $exists");
     
     if (!exists) {
-      DebugLogger.log("📁 Base de datos no existe, intentando copiar desde assets...");
       try {
         final data = await rootBundle.load('assets/data/data.sqlite');
         final bytes = data.buffer.asUint8List();
         await File(path).writeAsBytes(bytes);
-        DebugLogger.log("✅ Base de datos copiada exitosamente. Tamaño: ${bytes.length} bytes");
+        DebugLogger.log("✅ Base de datos copiada desde assets");
       } catch (e) {
-        DebugLogger.error("Error copiando base de datos", e);
         DebugLogger.log("📁 Creando base de datos nueva...");
         final db = await openDatabase(path, version: 1, onCreate: _onCreate);
-        DebugLogger.log("✅ Base de datos nueva creada");
         return db;
       }
     }
     
     final db = await openDatabase(path);
-    DebugLogger.log("✅ Base de datos abierta correctamente");
-    
-    try {
-      final result = await db.rawQuery('SELECT COUNT(*) as count FROM directiva');
-      final count = result.first['count'] as int? ?? 0;
-      DebugLogger.log("📊 Tabla directiva tiene $count registros");
-    } catch (e) {
-      DebugLogger.error("Error verificando tabla directiva", e);
-    }
-    
+    DebugLogger.log("✅ Base de datos abierta");
     return db;
   }
 
   static Future<void> _onCreate(Database db, int version) async {
-    DebugLogger.log("🆕 Creando base de datos nueva desde cero...");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS directiva (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,8 +56,6 @@ class DatabaseService {
         ocupacion TEXT, activo INTEGER DEFAULT 1
       )
     ''');
-    DebugLogger.log("✅ Tabla directiva creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS estudiante (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,8 +63,6 @@ class DatabaseService {
         grado TEXT, peloton INTEGER, ocupacion TEXT, activo INTEGER DEFAULT 1
       )
     ''');
-    DebugLogger.log("✅ Tabla estudiante creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS profesor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,8 +70,6 @@ class DatabaseService {
         ocupacion TEXT, activo INTEGER DEFAULT 1
       )
     ''');
-    DebugLogger.log("✅ Tabla profesor creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS oficial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -106,8 +77,6 @@ class DatabaseService {
         ocupacion TEXT, activo INTEGER DEFAULT 1
       )
     ''');
-    DebugLogger.log("✅ Tabla oficial creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS actividad (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,16 +86,12 @@ class DatabaseService {
         notificador TEXT, sync_enviado INTEGER DEFAULT 0
       )
     ''');
-    DebugLogger.log("✅ Tabla actividad creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS meritos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         categoria TEXT, subcategoria TEXT, causa TEXT, meritos INTEGER
       )
     ''');
-    DebugLogger.log("✅ Tabla meritos creada");
-    
     await db.execute('''
       CREATE TABLE IF NOT EXISTS demeritos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -134,197 +99,168 @@ class DatabaseService {
         demeritos_10mo INTEGER, demeritos_11_12 INTEGER
       )
     ''');
-    DebugLogger.log("✅ Tabla demeritos creada");
     
     await db.insert('directiva', {
-      'nombre': 'admin',
-      'apellidos': 'admin',
-      'ci': 'admin',
-      'password': 'admin123',
-      'ocupacion': 'director',
-      'activo': 1,
+      'nombre': 'admin', 'apellidos': 'admin',
+      'ci': 'admin', 'password': 'admin123',
+      'ocupacion': 'director', 'activo': 1,
     });
-    DebugLogger.log("✅ Usuario admin insertado");
-    
-    await db.insert('meritos', {
-      'categoria': 'Académico',
-      'subcategoria': 'Participación',
-      'causa': 'Participación activa en clase',
-      'meritos': 2,
-    });
-    await db.insert('meritos', {
-      'categoria': 'Conducta',
-      'subcategoria': 'Compañerismo',
-      'causa': 'Ayudar a un compañero',
-      'meritos': 3,
-    });
-    DebugLogger.log("✅ Méritos de ejemplo insertados");
-    
-    await db.insert('demeritos', {
-      'categoria': 'Conducta',
-      'subcategoria': 'Disciplina',
-      'falta': 'Llegar tarde a clase',
-      'demeritos_10mo': 1,
-      'demeritos_11_12': 1,
-    });
-    await db.insert('demeritos', {
-      'categoria': 'Académico',
-      'subcategoria': 'Tareas',
-      'falta': 'No entregar tarea',
-      'demeritos_10mo': 2,
-      'demeritos_11_12': 2,
-    });
-    DebugLogger.log("✅ Deméritos de ejemplo insertados");
-    
-    DebugLogger.log("🎉 Base de datos creada exitosamente");
   }
 
   static Future<bool> initSession() async {
-    DebugLogger.log("🔐 Inicializando sesión...");
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final usuarioJson = prefs.getString('usuario');
-      if (usuarioJson != null) {
-        final Map<String, dynamic> userData = jsonDecode(usuarioJson);
-        _usuarioActual = Usuario.fromJson(userData);
-        DebugLogger.log("✅ Sesión restaurada: ${_usuarioActual?.nombre} ${_usuarioActual?.apellidos}");
-        return true;
-      }
-      DebugLogger.log("ℹ️ No hay sesión guardada");
-      return false;
-    } catch (e) {
-      DebugLogger.error("Error restaurando sesión", e);
-      return false;
+    final prefs = await SharedPreferences.getInstance();
+    final usuarioJson = prefs.getString('usuario');
+    if (usuarioJson != null) {
+      _usuarioActual = Usuario.fromJson(jsonDecode(usuarioJson));
+      return true;
     }
+    return false;
   }
 
   static Future<void> saveSession(Usuario usuario) async {
     _usuarioActual = usuario;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('usuario', jsonEncode(usuario.toJson()));
-    DebugLogger.log("✅ Sesión guardada: ${usuario.nombre} ${usuario.apellidos}");
   }
 
   static Future<void> logout() async {
     _usuarioActual = null;
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
-    DebugLogger.log("✅ Sesión cerrada");
   }
 
   static Future<Map<String, dynamic>> login(String nombre, String apellidos, String password, String cargo) async {
-    DebugLogger.log("🔐 ===== INICIO DE LOGIN =====");
-    DebugLogger.log("📝 Datos ingresados:");
-    DebugLogger.log("   - Nombre: '$nombre'");
-    DebugLogger.log("   - Apellidos: '$apellidos'");
-    DebugLogger.log("   - Password: '${password.length} caracteres'");
-    DebugLogger.log("   - Cargo: '$cargo'");
+    final db = await database;
+    final results = await db.query(
+      cargo,
+      where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
+      whereArgs: [nombre.trim().toLowerCase(), apellidos.trim().toLowerCase(), password.trim()],
+    );
     
-    try {
-      final db = await database;
-      
-      final nom = nombre.trim().toLowerCase();
-      final ape = apellidos.trim().toLowerCase();
-      final pass = password.trim();
-      
-      DebugLogger.log("🔍 Buscando en tabla: $cargo");
-      
-      final results = await db.query(
-        cargo,
-        where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
-        whereArgs: [nom, ape, pass],
+    if (results.isNotEmpty) {
+      final userData = results.first;
+      final usuario = Usuario(
+        id: userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0,
+        nombre: userData['nombre'] as String,
+        apellidos: userData['apellidos'] as String,
+        ci: userData['ci'].toString(),
+        cargo: cargo,
+        ocupacion: userData['ocupacion'] as String?,
+        grado: userData['grado'] as String?,
+        peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
       );
-      
-      DebugLogger.log("📊 Resultados encontrados: ${results.length}");
-      
-      if (results.isNotEmpty) {
-        final userData = results.first;
-        
-        // Extraer valores de forma segura
-        final idValue = userData['id'];
-        final userId = idValue is int ? idValue : (idValue is String ? int.tryParse(idValue) ?? 0 : 0);
-        
-        final nombreValue = userData['nombre'] as String? ?? '';
-        final apellidosValue = userData['apellidos'] as String? ?? '';
-        final ciValue = userData['ci']?.toString() ?? '';
-        final ocupacionValue = userData['ocupacion'] as String?;
-        final gradoValue = userData['grado'] as String?;
-        
-        int? pelotonValue;
-        final pelotonRaw = userData['peloton'];
-        if (pelotonRaw is int) {
-          pelotonValue = pelotonRaw;
-        } else if (pelotonRaw is String) {
-          pelotonValue = int.tryParse(pelotonRaw);
-        }
-        
-        DebugLogger.log("✅ Usuario encontrado!");
-        DebugLogger.log("   - ID: $userId");
-        DebugLogger.log("   - Nombre: $nombreValue");
-        DebugLogger.log("   - Apellidos: $apellidosValue");
-        
-        final usuario = Usuario(
-          id: userId,
-          nombre: nombreValue,
-          apellidos: apellidosValue,
-          ci: ciValue,
-          cargo: cargo,
-          ocupacion: ocupacionValue,
-          grado: gradoValue,
-          peloton: pelotonValue,
-        );
-        await saveSession(usuario);
-        DebugLogger.log("🎉 LOGIN EXITOSO!");
-        return {'success': true, 'usuario': usuario};
-      }
-      
-      DebugLogger.log("❌ LOGIN FALLIDO: Usuario no encontrado");
-      return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
-      
-    } catch (e, stackTrace) {
-      DebugLogger.error("Error en login", e);
-      DebugLogger.error("Stack trace", stackTrace.toString());
-      return {'success': false, 'message': 'Error interno: $e'};
+      await saveSession(usuario);
+      return {'success': true, 'usuario': usuario};
     }
+    return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
   }
 
   static Future<List<Map<String, dynamic>>> buscarEstudiantes(String query) async {
-    DebugLogger.log("🔍 Buscando estudiantes: '$query'");
     final db = await database;
-    final results = await db.rawQuery(
+    return await db.rawQuery(
       "SELECT e.* FROM estudiante e WHERE e.nombre LIKE ? OR e.apellidos LIKE ? OR e.ci LIKE ? LIMIT 30",
       ['%$query%', '%$query%', '%$query%']
     );
-    DebugLogger.log("📊 Encontrados ${results.length} estudiantes");
-    return results;
   }
 
   static Future<List<Map<String, dynamic>>> getCatalogo(String tipo) async {
-    DebugLogger.log("📚 Obteniendo catálogo: $tipo");
     final db = await database;
     final tabla = tipo == 'merito' ? 'meritos' : 'demeritos';
-    final results = await db.query(tabla, orderBy: 'id');
-    DebugLogger.log("📊 Catálogo $tipo: ${results.length} elementos");
-    return results;
+    return await db.query(tabla, orderBy: 'id');
   }
 
   static Future<Map<String, dynamic>> getDashboard() async {
-    DebugLogger.log("📊 Obteniendo dashboard");
-    if (_usuarioActual == null) {
-      DebugLogger.log("❌ No hay usuario logueado");
-      return {'success': false, 'stats': {}, 'semana_actual': []};
-    }
-    return {'success': true, 'stats': {'meritos_semana': 0, 'demeritos_semana': 0, 'balance_semana': 0}, 'semana_actual': [], 'alarma_activa': false};
+    if (_usuarioActual == null) return {'success': false};
+    
+    final db = await database;
+    final idEnd = 'estudiante_${_usuarioActual!.id}';
+    final hoy = DateTime.now();
+    final inicioSemana = hoy.subtract(Duration(days: hoy.weekday - 1)).toString().split(' ')[0];
+    
+    final meritos = await db.rawQuery(
+      'SELECT COALESCE(SUM(cantidad),0) as total FROM actividad WHERE id_end=? AND tipo="merito" AND fecha>=?',
+      [idEnd, inicioSemana]
+    );
+    final demeritos = await db.rawQuery(
+      'SELECT COALESCE(SUM(cantidad),0) as total FROM actividad WHERE id_end=? AND tipo="demerito" AND fecha>=?',
+      [idEnd, inicioSemana]
+    );
+    
+    return {
+      'success': true,
+      'stats': {
+        'meritos_semana': (meritos.first['total'] as int?) ?? 0,
+        'demeritos_semana': (demeritos.first['total'] as int?) ?? 0,
+        'balance_semana': ((meritos.first['total'] as int?) ?? 0) - ((demeritos.first['total'] as int?) ?? 0),
+      },
+      'semana_actual': [],
+      'alarma_activa': ((demeritos.first['total'] as int?) ?? 0) >= 15,
+    };
   }
 
   static Future<Map<String, dynamic>> getPerfil() async {
-    DebugLogger.log("👤 Obteniendo perfil");
     if (_usuarioActual == null) return {'success': false};
-    return {'success': true, 'stats': {'meritos': 0, 'demeritos': 0}, 'ultimas_actividades': []};
+    
+    final db = await database;
+    final idEnd = 'estudiante_${_usuarioActual!.id}';
+    
+    final meritos = await db.rawQuery(
+      'SELECT COALESCE(SUM(cantidad),0) as total FROM actividad WHERE id_end=? AND tipo="merito"',
+      [idEnd]
+    );
+    final demeritos = await db.rawQuery(
+      'SELECT COALESCE(SUM(cantidad),0) as total FROM actividad WHERE id_end=? AND tipo="demerito"',
+      [idEnd]
+    );
+    final ultimas = await db.rawQuery(
+      "SELECT a.*, 'Sistema' as notificador FROM actividad a WHERE a.id_end=? ORDER BY a.fecha DESC, a.hora DESC LIMIT 20",
+      [idEnd]
+    );
+    
+    return {
+      'success': true,
+      'stats': {
+        'meritos': (meritos.first['total'] as int?) ?? 0,
+        'demeritos': (demeritos.first['total'] as int?) ?? 0,
+      },
+      'ultimas_actividades': ultimas,
+    };
   }
 
   static Future<Map<String, dynamic>> enviarNotificacion(Map<String, dynamic> data) async {
-    DebugLogger.log("📤 Enviando notificación");
+    final db = await database;
+    final String? idStar = data['id_star'] != null ? '${data['cargo_notificador']}_${data['id_star']}' : null;
+    
+    for (final dest in data['destinatarios'] as List) {
+      for (final act in data['actividades'] as List) {
+        final idEnd = 'estudiante_${dest['id']}';
+        
+        int cantidad = act['cantidad'];
+        if (act['tipo'] == 'demerito' && data['rangos'] != null) {
+          final grado = dest['grado'];
+          if (grado == '10mo') {
+            cantidad = data['rangos']['10mo'] ?? act['cantidad'];
+          } else {
+            cantidad = data['rangos']['11_12'] ?? act['cantidad'];
+          }
+        }
+        
+        await db.insert('actividad', {
+          'id_star': idStar,
+          'id_end': idEnd,
+          'tipo': act['tipo'],
+          'categoria': act['categoria'],
+          'falta_causa': act['nombre'],
+          'cantidad': cantidad,
+          'fecha': data['fecha'],
+          'hora': data['hora'],
+          'observaciones': data['observaciones'],
+          'leido': 0,
+          'sync_enviado': 0,
+        });
+        DebugLogger.log("✅ Actividad guardada: ${act['nombre']} para estudiante ${dest['id']} con cantidad $cantidad");
+      }
+    }
     return {'success': true};
   }
 }
