@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../services/database_service.dart';
 import '../services/debug_logger.dart';
+import '../services/mesh_service.dart';
 import '../models/usuario.dart';
+import '../utils/role_checker.dart';
 import 'login_screen.dart';
 import 'perfil_screen.dart';
 import 'configuracion.dart';
@@ -26,6 +28,8 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   final GlobalKey _qrKey = GlobalKey();
+  bool _showDebug = false;
+  int _tapCount = 0;
 
   @override
   void initState() {
@@ -40,6 +44,10 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       curve: Curves.easeInOut,
     );
     _animationController.forward();
+    
+    DebugLogger.log("📱 Dashboard iniciado");
+    DebugLogger.log("🔗 Estado Mesh: ${MeshService.isRunning ? 'Activo' : 'Inactivo'}");
+    DebugLogger.log("📡 Dispositivos conectados: ${MeshService.peersCount}");
   }
 
   @override
@@ -57,6 +65,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
       _data = r;
       _loading = false;
     });
+    DebugLogger.log("📊 Dashboard cargado");
   }
 
   Future<void> _search(String q) async {
@@ -66,6 +75,33 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     }
     final r = await DatabaseService.buscarEstudiantes(q);
     setState(() => _results = r);
+    DebugLogger.log("🔍 Búsqueda: '$q' - ${r.length} resultados");
+  }
+
+  void _onWelcomeTap() {
+    _tapCount++;
+    if (_tapCount >= 5) {
+      setState(() {
+        _showDebug = !_showDebug;
+        _tapCount = 0;
+      });
+      DebugLogger.log(_showDebug ? "🔍 Panel de depuración ACTIVADO" : "🔍 Panel de depuración DESACTIVADO");
+      if (_showDebug) {
+        _showNetworkStatus();
+      }
+    }
+    Future.delayed(const Duration(seconds: 2), () {
+      _tapCount = 0;
+    });
+  }
+
+  void _showNetworkStatus() {
+    DebugLogger.log("=== ESTADO DE RED ===");
+    DebugLogger.log("Mesh activo: ${MeshService.isRunning}");
+    DebugLogger.log("Dispositivos conectados: ${MeshService.peersCount}");
+    DebugLogger.log("Lista de peers: ${MeshService.peersList.isEmpty ? 'Ninguno' : MeshService.peersList.join(', ')}");
+    DebugLogger.log("Bluetooth: ${MeshService.bluetoothState.toString()}");
+    DebugLogger.log("===================");
   }
 
   void _showQRModal() {
@@ -109,15 +145,9 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
             const SizedBox(height: 20),
             const Icon(Icons.qr_code, size: 50, color: Color(0xFF1E3C72)),
             const SizedBox(height: 10),
-            const Text(
-              'Tu Código QR',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1E3C72)),
-            ),
+            const Text('Tu Código QR', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1E3C72))),
             const SizedBox(height: 8),
-            Text(
-              'Muestra este código para recibir notificaciones',
-              style: TextStyle(color: Colors.grey[600], fontSize: 14),
-            ),
+            Text('Muestra este código para recibir notificaciones', style: TextStyle(color: Colors.grey[600], fontSize: 14)),
             const SizedBox(height: 25),
             Container(
               padding: const EdgeInsets.all(20),
@@ -195,7 +225,7 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
 
     final u = DatabaseService.usuario;
     final esEstudiante = u?.cargo == 'estudiante';
-    final puedeNotificar = u != null && ['directiva', 'oficial', 'profesor'].contains(u.cargo);
+    final puedeNotificar = RoleChecker.puedeNotificar(u);
     final stats = _data?['stats'] as Map<String, dynamic>?;
     final meritosSemana = stats?['meritos_semana'] ?? 0;
     final demeritosSemana = stats?['demeritos_semana'] ?? 0;
@@ -251,142 +281,178 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
           ),
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: _load,
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            physics: const BouncingScrollPhysics(),
-            children: [
-              // Tarjeta de bienvenida
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [Color(0xFF1E3C72), Color(0xFF2A5298)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [BoxShadow(color: const Color(0xFF1E3C72).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.celebration, color: Colors.white, size: 28),
-                    const SizedBox(width: 12),
-                    Expanded(
+      body: Stack(
+        children: [
+          RefreshIndicator(
+            onRefresh: _load,
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                physics: const BouncingScrollPhysics(),
+                children: [
+                  GestureDetector(
+                    onTap: _onWelcomeTap,
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(colors: [Color(0xFF1E3C72), Color(0xFF2A5298)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: const Color(0xFF1E3C72).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.celebration, color: Colors.white, size: 28),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('¡Bienvenido!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
+                                Text('Sistema de Gestión Escolar', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.8))),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
+                            child: Text(DateTime.now().toString().substring(0, 10), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  if (esEstudiante) ...[
+                    Row(
+                      children: [
+                        _buildStatCard('Méritos', meritosSemana, Colors.green, Icons.emoji_events),
+                        const SizedBox(width: 12),
+                        _buildStatCard('Deméritos', demeritosSemana, Colors.red, Icons.warning_amber),
+                        const SizedBox(width: 12),
+                        _buildStatCard('Balance', balanceSemana, balanceSemana >= 0 ? Colors.blue : Colors.orange, Icons.balance),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  if (puedeNotificar) ...[
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5))],
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('¡Bienvenido!', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white)),
-                          Text('Sistema de Gestión Escolar', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.8))),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(color: const Color(0xFF1E3C72).withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
+                                child: const Icon(Icons.search, color: Color(0xFF1E3C72), size: 22),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('Buscar Estudiante', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3C72))),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: _bc,
+                            decoration: InputDecoration(
+                              hintText: 'Nombre, apellidos o CI...',
+                              prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                              filled: true,
+                              fillColor: const Color(0xFFF5F7FA),
+                            ),
+                            onChanged: _search,
+                          ),
+                          const SizedBox(height: 12),
+                          ..._results.map((e) => _buildStudentCard(e)),
+                          if (_results.isEmpty && _bc.text.isNotEmpty)
+                            const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Center(child: Text('No se encontraron estudiantes', style: TextStyle(color: Colors.grey))),
+                            ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(20)),
-                      child: Text(DateTime.now().toString().substring(0, 10), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                    const SizedBox(height: 20),
+                  ],
+                  if (puedeNotificar) ...[
+                    InkWell(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificarScreen())),
+                      borderRadius: BorderRadius.circular(24),
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [BoxShadow(color: const Color(0xFF10B981).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
+                              child: const Icon(Icons.notifications_active, color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Notificar Actividad', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                                  Text('Registrar mérito o demérito', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.8))),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
+                          ],
+                        ),
+                      ),
                     ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (_showDebug)
+            Positioned(
+              bottom: 10,
+              left: 10,
+              right: 10,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.bug_report, color: Colors.amber, size: 16),
+                          const SizedBox(width: 8),
+                          const Text("DEBUG PANEL", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () => setState(() => _showDebug = false),
+                            child: const Icon(Icons.close, color: Colors.white, size: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 250, child: DebugLogger.buildDebugPanel()),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
-              // Estadísticas para estudiantes
-              if (esEstudiante) ...[
-                Row(
-                  children: [
-                    _buildStatCard('Méritos', meritosSemana, Colors.green, Icons.emoji_events),
-                    const SizedBox(width: 12),
-                    _buildStatCard('Deméritos', demeritosSemana, Colors.red, Icons.warning_amber),
-                    const SizedBox(width: 12),
-                    _buildStatCard('Balance', balanceSemana, balanceSemana >= 0 ? Colors.blue : Colors.orange, Icons.balance),
-                  ],
-                ),
-                const SizedBox(height: 20),
-              ],
-              // Buscador para profesores/oficiales
-              if (puedeNotificar) ...[
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 15, offset: const Offset(0, 5))],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(color: const Color(0xFF1E3C72).withOpacity(0.1), borderRadius: BorderRadius.circular(14)),
-                            child: const Icon(Icons.search, color: Color(0xFF1E3C72), size: 22),
-                          ),
-                          const SizedBox(width: 12),
-                          const Text('Buscar Estudiante', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF1E3C72))),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: _bc,
-                        decoration: InputDecoration(
-                          hintText: 'Nombre, apellidos o CI...',
-                          prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
-                          filled: true,
-                          fillColor: const Color(0xFFF5F7FA),
-                        ),
-                        onChanged: _search,
-                      ),
-                      const SizedBox(height: 12),
-                      ..._results.map((e) => _buildStudentCard(e)),
-                      if (_results.isEmpty && _bc.text.isNotEmpty)
-                        const Padding(
-                          padding: EdgeInsets.all(20),
-                          child: Center(child: Text('No se encontraron estudiantes', style: TextStyle(color: Colors.grey))),
-                        ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
-              ],
-              // Acción rápida para notificar
-              if (puedeNotificar) ...[
-                InkWell(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificarScreen())),
-                  borderRadius: BorderRadius.circular(24),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [BoxShadow(color: const Color(0xFF10B981).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 5))],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(16)),
-                          child: const Icon(Icons.notifications_active, color: Colors.white, size: 28),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text('Notificar Actividad', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                              Text('Registrar mérito o demérito', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.8))),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
       floatingActionButton: puedeNotificar
           ? FloatingActionButton(
