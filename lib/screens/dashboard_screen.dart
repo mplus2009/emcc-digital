@@ -453,3 +453,44 @@ class _DashboardScreenState extends State<DashboardScreen> with SingleTickerProv
     );
   }
 }
+
+  Widget _buildStudentCard(Map<String, dynamic> estudiante, bool isDark) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : const Color(0xFFF5F7FA),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 50,
+            height: 50,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFF667EEA), Color(0xFF764BA2)]),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(Icons.person, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${estudiante['nombre']} ${estudiante['apellidos']}', 
+                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: isDark ? Colors.white : Colors.black)),
+                Text('CI: ${estudiante['CI']}', 
+                     style: TextStyle(color: isDark ? Colors.grey.shade400 : Colors.grey)),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => NotificarScreen(destinatarioPrecargado: estudiante))),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1E3C72)),
+            child: const Text('Notificar'),
+          ),
+        ],
+      ),
+    );
+  }
