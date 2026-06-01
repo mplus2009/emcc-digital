@@ -34,3 +34,5 @@ flutter:
   assets:
     - assets/data/
     - assets/images/
+
+  flutter_local_notifications: ^16.0.0

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/database_service.dart';
 import 'services/permission_service.dart';
 import 'services/mesh_service.dart';
+import 'services/notification_service.dart';
 import 'providers/theme_provider.dart';
 import 'screens/splash_screen.dart';
 
@@ -19,6 +20,7 @@ void main() async {
   await DatabaseService.database;
   await DatabaseService.initSession();
   await MeshService.start();
+  await NotificationService.initialize();
   
   runApp(
     ChangeNotifierProvider(

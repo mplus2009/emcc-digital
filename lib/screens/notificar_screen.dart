@@ -21,6 +21,8 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   String _tipo = 'merito';
   bool _loading = true;
   bool _sending = false;
+  bool _showDebug = false;
+  int _tapCount = 0;
   final _bc = TextEditingController();
   final _searchActController = TextEditingController();
   final _fc = TextEditingController();
@@ -42,6 +44,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
 
   @override
   void initState() {
+    DebugLogger.log("📱 NotificarScreen iniciada");
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _fc.text = DateTime.now().toString().split(' ')[0];
@@ -613,3 +616,34 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     }
   }
 }
+
+  // Añadir panel de debug
+  Widget _buildDebugPanel() {
+    return Container(
+      margin: const EdgeInsets.only(top: 16),
+      decoration: BoxDecoration(
+        color: Colors.black87,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.bug_report, color: Colors.amber, size: 16),
+                const Text(" DEBUG PANEL", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() => _showDebug = !_showDebug),
+                  child: const Icon(Icons.close, color: Colors.white, size: 16),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 200, child: DebugLogger.buildDebugPanel()),
+        ],
+      ),
+    );
+  }

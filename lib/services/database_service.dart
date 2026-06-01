@@ -145,7 +145,6 @@ class DatabaseService {
     if (results.isNotEmpty) {
       final userData = results.first;
       
-      // Extraer ID de forma segura
       final idRaw = userData['id'];
       final int userId;
       if (idRaw is int) {
@@ -156,7 +155,6 @@ class DatabaseService {
         userId = 0;
       }
       
-      // Extraer pelotón de forma segura
       final pelotonRaw = userData['peloton'];
       final int? peloton;
       if (pelotonRaw is int) {
@@ -256,39 +254,50 @@ class DatabaseService {
   }
 
   static Future<Map<String, dynamic>> enviarNotificacion(Map<String, dynamic> data) async {
-    final db = await database;
-    final String? idStar = data['id_star'] != null ? '${data['cargo_notificador']}_${data['id_star']}' : null;
-    
-    for (final dest in data['destinatarios'] as List) {
-      for (final act in data['actividades'] as List) {
-        final idEnd = 'estudiante_${dest['id']}';
-        
-        int cantidad = act['cantidad'] as int;
-        if (act['tipo'] == 'demerito' && data['rangos'] != null) {
-          final grado = dest['grado'];
-          if (grado == '10mo') {
-            cantidad = (data['rangos']['10mo'] as int?) ?? cantidad;
-          } else {
-            cantidad = (data['rangos']['11_12'] as int?) ?? cantidad;
+    DebugLogger.log("📤 Iniciando envío de notificación...");
+    try {
+      final db = await database;
+      final String? idStar = data['id_star'] != null ? '${data['cargo_notificador']}_${data['id_star']}' : null;
+      
+      int actividadesGuardadas = 0;
+      
+      for (final dest in data['destinatarios'] as List) {
+        for (final act in data['actividades'] as List) {
+          final idEnd = 'estudiante_${dest['id']}';
+          
+          int cantidad = act['cantidad'] as int;
+          if (act['tipo'] == 'demerito' && data['rangos'] != null) {
+            final grado = dest['grado'];
+            if (grado == '10mo') {
+              cantidad = (data['rangos']['10mo'] as int?) ?? cantidad;
+            } else {
+              cantidad = (data['rangos']['11_12'] as int?) ?? cantidad;
+            }
           }
+          
+          await db.insert('actividad', {
+            'id_star': idStar,
+            'id_end': idEnd,
+            'tipo': act['tipo'],
+            'categoria': act['categoria'],
+            'falta_causa': act['nombre'],
+            'cantidad': cantidad,
+            'fecha': data['fecha'],
+            'hora': data['hora'],
+            'observaciones': data['observaciones'],
+            'leido': 0,
+            'sync_enviado': 0,
+          });
+          actividadesGuardadas++;
+          DebugLogger.log("✅ Actividad guardada: ${act['nombre']} para estudiante ${dest['id']} con cantidad $cantidad");
         }
-        
-        await db.insert('actividad', {
-          'id_star': idStar,
-          'id_end': idEnd,
-          'tipo': act['tipo'],
-          'categoria': act['categoria'],
-          'falta_causa': act['nombre'],
-          'cantidad': cantidad,
-          'fecha': data['fecha'],
-          'hora': data['hora'],
-          'observaciones': data['observaciones'],
-          'leido': 0,
-          'sync_enviado': 0,
-        });
-        DebugLogger.log("✅ Actividad guardada: ${act['nombre']} para estudiante ${dest['id']} con cantidad $cantidad");
       }
+      
+      DebugLogger.log("✅ Notificación completada: $actividadesGuardadas actividades guardadas");
+      return {'success': true};
+    } catch (e) {
+      DebugLogger.error("Error en enviarNotificacion", e);
+      return {'success': false, 'message': e.toString()};
     }
-    return {'success': true};
   }
 }
