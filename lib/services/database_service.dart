@@ -131,23 +131,51 @@ class DatabaseService {
 
   static Future<Map<String, dynamic>> login(String nombre, String apellidos, String password, String cargo) async {
     final db = await database;
+    
+    final nom = nombre.trim().toLowerCase();
+    final ape = apellidos.trim().toLowerCase();
+    final pass = password.trim();
+    
     final results = await db.query(
       cargo,
       where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
-      whereArgs: [nombre.trim().toLowerCase(), apellidos.trim().toLowerCase(), password.trim()],
+      whereArgs: [nom, ape, pass],
     );
     
     if (results.isNotEmpty) {
       final userData = results.first;
+      
+      // Extraer ID de forma segura
+      final idRaw = userData['id'];
+      final int userId;
+      if (idRaw is int) {
+        userId = idRaw;
+      } else if (idRaw is String) {
+        userId = int.tryParse(idRaw) ?? 0;
+      } else {
+        userId = 0;
+      }
+      
+      // Extraer pelotón de forma segura
+      final pelotonRaw = userData['peloton'];
+      final int? peloton;
+      if (pelotonRaw is int) {
+        peloton = pelotonRaw;
+      } else if (pelotonRaw is String) {
+        peloton = int.tryParse(pelotonRaw);
+      } else {
+        peloton = null;
+      }
+      
       final usuario = Usuario(
-        id: userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0,
-        nombre: userData['nombre'] as String,
-        apellidos: userData['apellidos'] as String,
-        ci: userData['ci'].toString(),
+        id: userId,
+        nombre: userData['nombre'] as String? ?? '',
+        apellidos: userData['apellidos'] as String? ?? '',
+        ci: userData['ci']?.toString() ?? '',
         cargo: cargo,
         ocupacion: userData['ocupacion'] as String?,
         grado: userData['grado'] as String?,
-        peloton: userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString()),
+        peloton: peloton,
       );
       await saveSession(usuario);
       return {'success': true, 'usuario': usuario};
@@ -235,13 +263,13 @@ class DatabaseService {
       for (final act in data['actividades'] as List) {
         final idEnd = 'estudiante_${dest['id']}';
         
-        int cantidad = act['cantidad'];
+        int cantidad = act['cantidad'] as int;
         if (act['tipo'] == 'demerito' && data['rangos'] != null) {
           final grado = dest['grado'];
           if (grado == '10mo') {
-            cantidad = data['rangos']['10mo'] ?? act['cantidad'];
+            cantidad = (data['rangos']['10mo'] as int?) ?? cantidad;
           } else {
-            cantidad = data['rangos']['11_12'] ?? act['cantidad'];
+            cantidad = (data['rangos']['11_12'] as int?) ?? cantidad;
           }
         }
         
