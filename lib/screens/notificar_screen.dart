@@ -21,8 +21,6 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   String _tipo = 'merito';
   bool _loading = true;
   bool _sending = false;
-  bool _showDebug = false;
-  int _tapCount = 0;
   final _bc = TextEditingController();
   final _searchActController = TextEditingController();
   final _fc = TextEditingController();
@@ -41,10 +39,11 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
   final _tempNombreController = TextEditingController();
   final _tempPasswordController = TextEditingController();
   bool _mostrarTemporalForm = false;
+  bool _showDebug = false;
+  int _tapCount = 0;
 
   @override
   void initState() {
-    DebugLogger.log("📱 NotificarScreen iniciada");
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _fc.text = DateTime.now().toString().split(' ')[0];
@@ -59,6 +58,19 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
       _notificadorNombre = u.nombreCompleto;
       _notificadorCargo = u.cargo;
     }
+    DebugLogger.log("📱 NotificarScreen iniciada");
+  }
+
+  void _onHeaderTap() {
+    _tapCount++;
+    if (_tapCount >= 5) {
+      setState(() {
+        _showDebug = !_showDebug;
+        _tapCount = 0;
+      });
+      DebugLogger.log(_showDebug ? "🔍 Panel debug ACTIVADO" : "🔍 Panel debug DESACTIVADO");
+    }
+    Future.delayed(const Duration(seconds: 2), () => _tapCount = 0);
   }
 
   Future<void> _load() async {
@@ -171,7 +183,10 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: const Text('Notificar Actividad', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: GestureDetector(
+          onTap: _onHeaderTap,
+          child: const Text('Notificar Actividad', style: TextStyle(fontWeight: FontWeight.bold)),
+        ),
         elevation: 0,
         backgroundColor: const Color(0xFF1E3C72),
         bottom: TabBar(
@@ -187,16 +202,53 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
+      body: Stack(
         children: [
-          _buildDestinatariosTab(),
-          _buildActividadesTab(cats, hay10, hay11),
-          _buildNotificadorTab(),
-          _buildDetallesTab(puede),
+          TabBarView(
+            controller: _tabController,
+            children: [
+              _buildDestinatariosTab(),
+              _buildActividadesTab(cats, hay10, hay11),
+              _buildNotificadorTab(),
+              _buildDetallesTab(puede),
+            ],
+          ),
+          if (_showDebug)
+            _buildDebugPanel(),
         ],
       ),
       bottomNavigationBar: _buildBottomBar(puede),
+    );
+  }
+
+  Widget _buildDebugPanel() {
+    return Positioned(
+      bottom: 10,
+      left: 10,
+      right: 10,
+      child: Container(
+        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.bug_report, color: Colors.amber, size: 16),
+                  const Text(" DEBUG PANEL", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() => _showDebug = false),
+                    child: const Icon(Icons.close, color: Colors.white, size: 16),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 200, child: DebugLogger.buildDebugPanel()),
+          ],
+        ),
+      ),
     );
   }
 
@@ -586,6 +638,8 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
 
   Future<void> _enviarNotificacion() async {
     setState(() => _sending = true);
+    DebugLogger.log("📤 Enviando notificación...");
+    
     final u = DatabaseService.usuario;
     
     final rangos = <String, int>{};
@@ -594,7 +648,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
       rangos['11_12'] = _rango11_12;
     }
     
-    await DatabaseService.enviarNotificacion({
+    final result = await DatabaseService.enviarNotificacion({
       'destinatarios': _dest,
       'actividades': _acts,
       'fecha': _fc.text,
@@ -606,44 +660,22 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     });
     
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notificación enviada'), backgroundColor: Colors.green));
-      setState(() {
-        _dest = [];
-        _acts = [];
-        _sending = false;
-        _tabController.index = 0;
-      });
+      setState(() => _sending = false);
+      
+      if (result['success'] == true) {
+        DebugLogger.log("✅ Notificación enviada exitosamente");
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Notificación enviada'), backgroundColor: Colors.green));
+        setState(() {
+          _dest = [];
+          _acts = [];
+          _tabController.index = 0;
+        });
+      } else {
+        DebugLogger.error("Error al enviar notificación", result['message']);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: ${result['message']}'), backgroundColor: Colors.red));
+      }
     }
   }
 }
-
-  // Añadir panel de debug
-  Widget _buildDebugPanel() {
-    return Container(
-      margin: const EdgeInsets.only(top: 16),
-      decoration: BoxDecoration(
-        color: Colors.black87,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.bug_report, color: Colors.amber, size: 16),
-                const Text(" DEBUG PANEL", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
-                const Spacer(),
-                GestureDetector(
-                  onTap: () => setState(() => _showDebug = !_showDebug),
-                  child: const Icon(Icons.close, color: Colors.white, size: 16),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(height: 200, child: DebugLogger.buildDebugPanel()),
-        ],
-      ),
-    );
-  }
