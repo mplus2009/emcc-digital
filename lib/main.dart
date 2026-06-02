@@ -1,13 +1,7 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'services/database_service.dart';
-import 'services/permission_service.dart';
-import 'services/mesh_service.dart';
-import 'services/notification_service.dart';
-import 'providers/theme_provider.dart';
-import 'widgets/error_boundary.dart';
 import 'screens/splash_screen.dart';
 
 void main() async {
@@ -18,18 +12,7 @@ void main() async {
     DeviceOrientation.portraitDown,
   ]);
   
-  await PermissionService.requestAllPermissions();
-  await DatabaseService.database;
-  await DatabaseService.initSession();
-  await MeshService.start();
-  await NotificationService.initialize();
-  
-  runApp(
-    ChangeNotifierProvider(
-      create: (_) => ThemeProvider(),
-      child: const EMCCApp(),
-    ),
-  );
+  runApp(const EMCCApp());
 }
 
 class EMCCApp extends StatelessWidget {
@@ -37,19 +20,19 @@ class EMCCApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ThemeProvider>(
-      builder: (context, themeProvider, child) {
-        return MaterialApp(
-          title: 'EMCC Digital',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeProvider.lightTheme,
-          darkTheme: ThemeProvider.darkTheme,
-          themeMode: themeProvider.themeMode,
-          home: const ErrorBoundary(
-            child: SplashScreen(),
-          ),
-        );
-      },
+    return MaterialApp(
+      title: 'EMCC Digital',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primaryColor: const Color(0xFF1E3C72),
+        scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF1E3C72),
+          foregroundColor: Colors.white,
+          elevation: 0,
+        ),
+      ),
+      home: const SplashScreen(),
     );
   }
 }
