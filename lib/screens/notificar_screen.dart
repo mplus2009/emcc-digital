@@ -1,7 +1,6 @@
 // lib/screens/notificar_screen.dart
 import 'package:flutter/material.dart';
-import 'package:emcc_digital/services/database_service.dart';
-import 'package:emcc_digital/services/debug_logger.dart';
+import '../services/database_service.dart';
 import 'escaner_screen.dart';
 
 class NotificarScreen extends StatefulWidget {
@@ -13,101 +12,92 @@ class NotificarScreen extends StatefulWidget {
 }
 
 class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProviderStateMixin {
-  List<Map<String, dynamic>> _dest = [];
-  List<Map<String, dynamic>> _acts = [];
-  List<Map<String, dynamic>> _catMeritos = [];
-  List<Map<String, dynamic>> _catDemeritos = [];
-  List<Map<String, dynamic>> _search = [];
-  String _tipo = 'merito';
-  bool _loading = true;
-  bool _sending = false;
-  final _bc = TextEditingController();
-  final _searchActController = TextEditingController();
-  final _fc = TextEditingController();
-  final _hc = TextEditingController();
-  final _obs = TextEditingController();
+  List<Map<String, dynamic>> _destinatarios = [];
+  List<Map<String, dynamic>> _actividades = [];
+  List<Map<String, dynamic>> _catalogoMeritos = [];
+  List<Map<String, dynamic>> _catalogoDemeritos = [];
+  List<Map<String, dynamic>> _busquedaEstudiantes = [];
+  String _tipoActividad = 'merito';
+  bool _cargando = true;
+  bool _enviando = false;
+  final _buscarController = TextEditingController();
+  final _buscarActividadController = TextEditingController();
+  final _fechaController = TextEditingController();
+  final _horaController = TextEditingController();
+  final _observacionesController = TextEditingController();
   final _cantidadController = TextEditingController(text: '1');
-  Map<String, dynamic>? _sel;
+  Map<String, dynamic>? _actividadSeleccionada;
   int _rango10mo = 1;
   int _rango11_12 = 1;
-  String? _catFiltro;
+  String? _categoriaFiltro;
   late TabController _tabController;
   
   bool _usandoCuentaTemporal = false;
-  String _notificadorNombre = '';
-  String _notificadorCargo = '';
+  String _nombreNotificador = '';
+  String _cargoNotificador = '';
   final _tempNombreController = TextEditingController();
   final _tempPasswordController = TextEditingController();
   bool _mostrarTemporalForm = false;
-  bool _showDebug = false;
-  int _tapCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
-    _fc.text = DateTime.now().toString().split(' ')[0];
-    _hc.text = DateTime.now().toString().substring(11, 16);
-    if (widget.destinatarioPrecargado != null) {
-      _dest.add(widget.destinatarioPrecargado!);
-    }
-    _load();
+    _tabController = TabController(length: 3, vsync: this);
+    _fechaController.text = DateTime.now().toString().split(' ')[0];
+    _horaController.text = DateTime.now().toString().substring(11, 16);
     
-    final u = DatabaseService.usuario;
-    if (u != null) {
-      _notificadorNombre = u.nombreCompleto;
-      _notificadorCargo = u.cargo;
+    if (widget.destinatarioPrecargado != null) {
+      _destinatarios.add(widget.destinatarioPrecargado!);
     }
-    DebugLogger.log("📱 NotificarScreen iniciada");
-  }
-
-  void _onHeaderTap() {
-    _tapCount++;
-    if (_tapCount >= 5) {
-      setState(() {
-        _showDebug = !_showDebug;
-        _tapCount = 0;
-      });
-      DebugLogger.log(_showDebug ? "🔍 Panel debug ACTIVADO" : "🔍 Panel debug DESACTIVADO");
+    
+    _cargarCatalogos();
+    
+    final usuario = DatabaseService.usuario;
+    if (usuario != null) {
+      _nombreNotificador = usuario.nombreCompleto;
+      _cargoNotificador = usuario.cargo;
     }
-    Future.delayed(const Duration(seconds: 2), () => _tapCount = 0);
   }
 
-  Future<void> _load() async {
-    _catMeritos = await DatabaseService.getCatalogo('merito');
-    _catDemeritos = await DatabaseService.getCatalogo('demerito');
-    setState(() => _loading = false);
+  Future<void> _cargarCatalogos() async {
+    _catalogoMeritos = await DatabaseService.getCatalogo('merito');
+    _catalogoDemeritos = await DatabaseService.getCatalogo('demerito');
+    setState(() => _cargando = false);
   }
 
-  List<Map<String, dynamic>> get _catActual =>
-      _tipo == 'merito' ? _catMeritos : _catDemeritos;
+  List<Map<String, dynamic>> get _catalogoActual =>
+      _tipoActividad == 'merito' ? _catalogoMeritos : _catalogoDemeritos;
 
-  List<Map<String, dynamic>> get _filteredActividades {
-    final query = _searchActController.text.toLowerCase();
-    final filtered = _catActual.where((a) {
-      final nombre = _tipo == 'merito' ? (a['causa'] ?? '') : (a['falta'] ?? '');
+  List<Map<String, dynamic>> get _actividadesFiltradas {
+    final query = _buscarActividadController.text.toLowerCase();
+    return _catalogoActual.where((a) {
+      final nombre = _tipoActividad == 'merito' ? (a['causa'] ?? '') : (a['falta'] ?? '');
       final categoria = a['categoria'] ?? '';
       final matchesQuery = query.isEmpty || nombre.toLowerCase().contains(query);
-      final matchesCategory = _catFiltro == null || categoria == _catFiltro;
+      final matchesCategory = _categoriaFiltro == null || categoria == _categoriaFiltro;
       return matchesQuery && matchesCategory;
     }).toList();
-    return filtered;
   }
 
-  int _getCantidadParaGrado(String grado) {
-    if (_tipo == 'merito') {
+  int _calcularCantidad() {
+    if (_tipoActividad == 'merito') {
       return int.tryParse(_cantidadController.text) ?? 1;
     }
-    return grado == '10mo' ? _rango10mo : _rango11_12;
+    final hay10mo = _destinatarios.any((d) => d['grado'] == '10mo');
+    final hayOtros = _destinatarios.any((d) => d['grado'] != '10mo');
+    int cantidad = 0;
+    if (hay10mo) cantidad += _rango10mo;
+    if (hayOtros) cantidad += _rango11_12;
+    return cantidad;
   }
 
   @override
   void dispose() {
-    _bc.dispose();
-    _searchActController.dispose();
-    _fc.dispose();
-    _hc.dispose();
-    _obs.dispose();
+    _buscarController.dispose();
+    _buscarActividadController.dispose();
+    _fechaController.dispose();
+    _horaController.dispose();
+    _observacionesController.dispose();
     _cantidadController.dispose();
     _tempNombreController.dispose();
     _tempPasswordController.dispose();
@@ -115,140 +105,109 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     super.dispose();
   }
 
+  void _mostrarSnackBar(String mensaje, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(mensaje), backgroundColor: color),
+    );
+  }
+
   Future<void> _verificarTemporal() async {
     final nombreCompleto = _tempNombreController.text.trim();
     final password = _tempPasswordController.text.trim();
     if (nombreCompleto.isEmpty || password.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Complete nombre y contraseña'), backgroundColor: Colors.orange));
+      _mostrarSnackBar('Complete nombre y contraseña', Colors.orange);
       return;
     }
     
-    final partes = nombreCompleto.split(' ');
-    final nombre = partes.first;
-    final apellidos = partes.skip(1).join(' ');
-    
-    final db = await DatabaseService.database;
-    for (final cargo in ['directiva', 'profesor', 'oficial', 'estudiante']) {
-      final result = await db.query(
-        cargo,
-        where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
-        whereArgs: [nombre.toLowerCase(), apellidos.toLowerCase(), password],
-      );
-      if (result.isNotEmpty) {
-        setState(() {
-          _usandoCuentaTemporal = true;
-          _notificadorNombre = '$nombre $apellidos';
-          _notificadorCargo = cargo;
-          _mostrarTemporalForm = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cuenta temporal verificada'), backgroundColor: Colors.green));
-        return;
-      }
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Credenciales incorrectas'), backgroundColor: Colors.red));
-  }
-
-  Future<void> _escanearQRTemporal() async {
-    final result = await Navigator.push<List<Map<String, dynamic>>>(
-      context,
-      MaterialPageRoute(builder: (_) => const EscanerScreen()),
+    final resultado = await DatabaseService.login(
+      nombreCompleto.split(' ').first,
+      nombreCompleto.split(' ').skip(1).join(' '),
+      password,
+      'directiva',
     );
-    if (result != null && result.isNotEmpty) {
-      final datos = result.first;
+    
+    if (resultado['success'] == true) {
       setState(() {
         _usandoCuentaTemporal = true;
-        _notificadorNombre = '${datos['nombre']} ${datos['apellidos']}';
-        _notificadorCargo = datos['cargo'] ?? 'estudiante';
+        _nombreNotificador = nombreCompleto;
+        _cargoNotificador = resultado['usuario'].cargo;
         _mostrarTemporalForm = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cuenta temporal cargada desde QR'), backgroundColor: Colors.green));
+      _mostrarSnackBar('Cuenta temporal verificada', Colors.green);
+    } else {
+      _mostrarSnackBar('Credenciales incorrectas', Colors.red);
+    }
+  }
+
+  Future<void> _enviarNotificacion() async {
+    setState(() => _enviando = true);
+    
+    final rangos = <String, int>{};
+    if (_tipoActividad == 'demerito' && _actividadSeleccionada != null) {
+      rangos['10mo'] = _rango10mo;
+      rangos['11_12'] = _rango11_12;
+    }
+    
+    final result = await DatabaseService.enviarNotificacion({
+      'destinatarios': _destinatarios,
+      'actividades': _actividades,
+      'fecha': _fechaController.text,
+      'hora': _horaController.text,
+      'id_star': _usandoCuentaTemporal ? null : DatabaseService.usuario?.id,
+      'cargo_notificador': _usandoCuentaTemporal ? _cargoNotificador : DatabaseService.usuario?.cargo,
+      'observaciones': _observacionesController.text,
+      'rangos': rangos,
+    });
+    
+    if (mounted) {
+      setState(() => _enviando = false);
+      
+      if (result['success'] == true) {
+        _mostrarSnackBar('Notificación enviada', Colors.green);
+        setState(() {
+          _destinatarios = [];
+          _actividades = [];
+          _tabController.index = 0;
+        });
+      } else {
+        _mostrarSnackBar('Error: ${result['message']}', Colors.red);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
+    if (_cargando) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final puede = _dest.isNotEmpty && _acts.isNotEmpty;
-    final hay10 = _dest.any((d) => d['grado'] == '10mo');
-    final hay11 = _dest.any((d) => d['grado'] != '10mo');
-    final cats = {..._catActual.map((c) => c['categoria'] as String).where((c) => c != null)};
+    final puedeEnviar = _destinatarios.isNotEmpty && _actividades.isNotEmpty;
+    final hay10mo = _destinatarios.any((d) => d['grado'] == '10mo');
+    final hayOtros = _destinatarios.any((d) => d['grado'] != '10mo');
+    final categorias = {..._catalogoActual.map((c) => c['categoria'] as String)};
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       appBar: AppBar(
-        title: GestureDetector(
-          onTap: _onHeaderTap,
-          child: const Text('Notificar Actividad', style: TextStyle(fontWeight: FontWeight.bold)),
-        ),
-        elevation: 0,
-        backgroundColor: const Color(0xFF1E3C72),
+        title: const Text('Notificar Actividad'),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
           tabs: const [
             Tab(icon: Icon(Icons.people), text: 'Destinatarios'),
             Tab(icon: Icon(Icons.list_alt), text: 'Actividades'),
             Tab(icon: Icon(Icons.person), text: 'Notificador'),
-            Tab(icon: Icon(Icons.settings), text: 'Detalles'),
           ],
         ),
       ),
-      body: Stack(
+      body: TabBarView(
+        controller: _tabController,
         children: [
-          TabBarView(
-            controller: _tabController,
-            children: [
-              _buildDestinatariosTab(),
-              _buildActividadesTab(cats, hay10, hay11),
-              _buildNotificadorTab(),
-              _buildDetallesTab(puede),
-            ],
-          ),
-          if (_showDebug)
-            _buildDebugPanel(),
+          _buildDestinatariosTab(),
+          _buildActividadesTab(categorias, hay10mo, hayOtros),
+          _buildNotificadorTab(),
         ],
       ),
-      bottomNavigationBar: _buildBottomBar(puede),
-    );
-  }
-
-  Widget _buildDebugPanel() {
-    return Positioned(
-      bottom: 10,
-      left: 10,
-      right: 10,
-      child: Container(
-        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.bug_report, color: Colors.amber, size: 16),
-                  const Text(" DEBUG PANEL", style: TextStyle(color: Colors.amber, fontSize: 12, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  GestureDetector(
-                    onTap: () => setState(() => _showDebug = false),
-                    child: const Icon(Icons.close, color: Colors.white, size: 16),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(height: 200, child: DebugLogger.buildDebugPanel()),
-          ],
-        ),
-      ),
+      bottomNavigationBar: _buildBottomBar(puedeEnviar),
     );
   }
 
@@ -261,69 +220,70 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Destinatarios', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    if (_dest.isEmpty)
-                      const Center(child: Text('No hay destinatarios', style: TextStyle(color: Colors.grey)))
-                    else
-                      Wrap(spacing: 8, runSpacing: 8, children: _dest.asMap().entries.map((entry) => Chip(
-                        label: Text(entry.value['nombre'], style: const TextStyle(color: Colors.white)),
-                        backgroundColor: const Color(0xFF1E3C72),
-                        deleteIcon: const Icon(Icons.close, color: Colors.white70, size: 18),
-                        onDeleted: () => setState(() => _dest.removeAt(entry.key)),
-                      )).toList()),
+                    const Text('Destinatarios', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      children: _destinatarios.asMap().entries.map((entry) => Chip(
+                        label: Text(entry.value['nombre']),
+                        onDeleted: () => setState(() => _destinatarios.removeAt(entry.key)),
+                      )).toList(),
+                    ),
                     const SizedBox(height: 20),
-                    const Text('Buscar estudiantes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
+                    const Text('Buscar estudiantes', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
                     TextField(
-                      controller: _bc,
-                      decoration: InputDecoration(
+                      controller: _buscarController,
+                      decoration: const InputDecoration(
                         hintText: 'Nombre, apellidos o CI...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                        prefixIcon: Icon(Icons.search),
                       ),
                       onChanged: (q) async {
                         if (q.length > 1) {
                           final r = await DatabaseService.buscarEstudiantes(q);
-                          if (mounted) setState(() => _search = r);
+                          setState(() => _busquedaEstudiantes = r);
                         } else {
-                          setState(() => _search = []);
+                          setState(() => _busquedaEstudiantes = []);
                         }
                       },
                     ),
-                    const SizedBox(height: 12),
-                    ..._search.map((e) => Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: CircleAvatar(child: Text(e['nombre'][0])),
-                        title: Text('${e['nombre']} ${e['apellidos']}'),
-                        subtitle: Text('CI: ${e['CI']} | Grado: ${e['grado'] ?? '10mo'}'),
-                        trailing: const Icon(Icons.add_circle, color: Colors.green),
-                        onTap: () {
-                          _dest.add({
+                    ..._busquedaEstudiantes.map((e) => ListTile(
+                      title: Text('${e['nombre']} ${e['apellidos']}'),
+                      subtitle: Text('CI: ${e['ci']}'),
+                      trailing: const Icon(Icons.add_circle, color: Colors.green),
+                      onTap: () {
+                        setState(() {
+                          _destinatarios.add({
                             'id': '${e['id']}',
                             'nombre': '${e['nombre']} ${e['apellidos']}',
-                            'ci': '${e['CI']}',
+                            'ci': '${e['ci']}',
                             'grado': e['grado'] ?? '10mo',
                           });
-                          setState(() { _search = []; _bc.clear(); });
-                        },
-                      ),
+                          _busquedaEstudiantes = [];
+                          _buscarController.clear();
+                        });
+                      },
                     )),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 10),
                     OutlinedButton.icon(
                       onPressed: () async {
-                        final result = await Navigator.push<List<Map<String, dynamic>>>(
-                          context, MaterialPageRoute(builder: (_) => const EscanerScreen()));
-                        if (result != null && mounted) setState(() => _dest.addAll(result));
+                        final result = await Navigator.push<List>(
+                          context,
+                          MaterialPageRoute(builder: (_) => const EscanerScreen()),
+                        );
+                        if (result != null && mounted) {
+                          setState(() => _destinatarios.addAll(result.cast<Map<String, dynamic>>()));
+                        }
                       },
                       icon: const Icon(Icons.qr_code_scanner),
                       label: const Text('Escanear QR'),
-                      style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 14)),
                     ),
                   ],
                 ),
@@ -335,7 +295,7 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildActividadesTab(Set<String> cats, bool hay10, bool hay11) {
+  Widget _buildActividadesTab(Set<String> categorias, bool hay10mo, bool hayOtros) {
     return Column(
       children: [
         Expanded(
@@ -344,149 +304,179 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
             children: [
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Actividades', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    if (_acts.isEmpty)
-                      const Center(child: Text('No hay actividades', style: TextStyle(color: Colors.grey)))
-                    else
-                      ..._acts.asMap().entries.map((entry) => Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: entry.value['tipo'] == 'merito' ? Colors.green.shade50 : Colors.red.shade50,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(entry.value['tipo'] == 'merito' ? Icons.emoji_events : Icons.warning_amber,
-                                color: entry.value['tipo'] == 'merito' ? Colors.green : Colors.red),
-                            const SizedBox(width: 12),
-                            Expanded(child: Text(entry.value['nombre'])),
-                            Text('${entry.value['tipo'] == 'merito' ? '+' : '-'}${entry.value['cantidad']}',
-                                style: TextStyle(fontWeight: FontWeight.bold,
-                                    color: entry.value['tipo'] == 'merito' ? Colors.green : Colors.red)),
-                            IconButton(icon: const Icon(Icons.delete, color: Colors.grey), onPressed: () => setState(() => _acts.removeAt(entry.key))),
-                          ],
-                        ),
-                      )),
+                    const Text('Actividades agregadas', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    ..._actividades.asMap().entries.map((entry) => Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: entry.value['tipo'] == 'merito' ? Colors.green.shade50 : Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(entry.value['tipo'] == 'merito' ? Icons.emoji_events : Icons.warning_amber),
+                          const SizedBox(width: 12),
+                          Expanded(child: Text(entry.value['nombre'])),
+                          Text('${entry.value['tipo'] == 'merito' ? '+' : '-'}${entry.value['cantidad']}'),
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () => setState(() => _actividades.removeAt(entry.key)),
+                          ),
+                        ],
+                      ),
+                    )),
+                    if (_actividades.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(20),
+                        child: Center(child: Text('No hay actividades')),
+                      ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(children: [
-                      Expanded(child: SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'merito', label: Text('Mérito'), icon: Icon(Icons.emoji_events)),
-                          ButtonSegment(value: 'demerito', label: Text('Demérito'), icon: Icon(Icons.warning_amber)),
-                        ],
-                        selected: {_tipo},
-                        onSelectionChanged: (Set<String> newSelection) => setState(() => _tipo = newSelection.first),
-                      )),
-                    ]),
-                    const SizedBox(height: 16),
-                    if (_tipo == 'merito')
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'merito', label: Text('Mérito'), icon: Icon(Icons.emoji_events)),
+                              ButtonSegment(value: 'demerito', label: Text('Demérito'), icon: Icon(Icons.warning_amber)),
+                            ],
+                            selected: {_tipoActividad},
+                            onSelectionChanged: (set) => setState(() => _tipoActividad = set.first),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_tipoActividad == 'merito') ...[
+                      const SizedBox(height: 16),
                       TextField(
                         controller: _cantidadController,
-                        decoration: const InputDecoration(labelText: 'Valor', border: OutlineInputBorder()),
+                        decoration: const InputDecoration(labelText: 'Valor (méritos)'),
                         keyboardType: TextInputType.number,
                       ),
-                    const SizedBox(height: 12),
+                    ],
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: _catFiltro,
-                      decoration: const InputDecoration(labelText: 'Categoría', border: OutlineInputBorder()),
+                      value: _categoriaFiltro,
+                      decoration: const InputDecoration(labelText: 'Categoría'),
                       items: [
                         const DropdownMenuItem(value: null, child: Text('Todas')),
-                        ...cats.map((c) => DropdownMenuItem(value: c, child: Text(c))),
+                        ...categorias.map((c) => DropdownMenuItem(value: c, child: Text(c))),
                       ],
-                      onChanged: (v) => setState(() => _catFiltro = v),
+                      onChanged: (v) => setState(() => _categoriaFiltro = v),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     TextField(
-                      controller: _searchActController,
-                      decoration: InputDecoration(
-                        hintText: 'Buscar mérito o demérito...',
-                        prefixIcon: const Icon(Icons.search),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      controller: _buscarActividadController,
+                      decoration: const InputDecoration(
+                        hintText: 'Buscar...',
+                        prefixIcon: Icon(Icons.search),
                       ),
-                      onChanged: (_) => setState(() {}),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
                     ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 300),
+                      constraints: const BoxConstraints(maxHeight: 250),
                       child: ListView.builder(
                         shrinkWrap: true,
-                        itemCount: _filteredActividades.length,
-                        itemBuilder: (context, index) {
-                          final item = _filteredActividades[index];
-                          final nombre = _tipo == 'merito' ? item['causa'] : item['falta'];
-                          final valor = _tipo == 'merito' ? '+${item['meritos']}' : '${item['demeritos_10mo']}';
+                        itemCount: _actividadesFiltradas.length,
+                        itemBuilder: (ctx, i) {
+                          final item = _actividadesFiltradas[i];
+                          final nombre = _tipoActividad == 'merito' ? item['causa'] : item['falta'];
+                          final valor = _tipoActividad == 'merito' ? '+${item['meritos']}' : '${item['demeritos_10mo']}';
                           return ListTile(
-                            leading: Icon(_tipo == 'merito' ? Icons.emoji_events : Icons.warning_amber,
-                                color: _tipo == 'merito' ? Colors.green : Colors.red),
-                            title: Text(nombre, style: const TextStyle(fontSize: 14)),
+                            title: Text(nombre),
                             subtitle: Text(item['categoria']),
-                            trailing: Chip(label: Text(valor), backgroundColor: _tipo == 'merito' ? Colors.green.shade100 : Colors.red.shade100),
-                            onTap: () => setState(() => _sel = item),
+                            trailing: Chip(label: Text(valor)),
+                            onTap: () => setState(() => _actividadSeleccionada = item),
                           );
                         },
                       ),
                     ),
-                    if (_sel != null) ...[
+                    if (_actividadSeleccionada != null && _tipoActividad == 'demerito' && (hay10mo || hayOtros)) ...[
                       const SizedBox(height: 16),
-                      if (_tipo == 'demerito' && (hay10 || hay11))
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(12)),
-                          child: Column(
-                            children: [
-                              const Text('Valores por grado', style: TextStyle(fontWeight: FontWeight.bold)),
-                              if (hay10) ...[
-                                const SizedBox(height: 8),
-                                Row(children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.amber.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Column(
+                          children: [
+                            const Text('Valores por grado', style: TextStyle(fontWeight: FontWeight.bold)),
+                            if (hay10mo) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
                                   const Text('10mo Grado:'),
                                   const Spacer(),
-                                  IconButton(onPressed: () => setState(() => _rango10mo = _rango10mo > 1 ? _rango10mo - 1 : 1), icon: const Icon(Icons.remove)),
-                                  Text('$_rango10mo', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                  IconButton(onPressed: () => setState(() => _rango10mo = _rango10mo < 3 ? _rango10mo + 1 : 3), icon: const Icon(Icons.add)),
-                                ]),
-                              ],
-                              if (hay11) ...[
-                                const SizedBox(height: 8),
-                                Row(children: [
+                                  IconButton(
+                                    onPressed: () => setState(() => _rango10mo = _rango10mo > 1 ? _rango10mo - 1 : 1),
+                                    icon: const Icon(Icons.remove),
+                                  ),
+                                  Text('$_rango10mo', style: const TextStyle(fontSize: 18)),
+                                  IconButton(
+                                    onPressed: () => setState(() => _rango10mo = _rango10mo < 3 ? _rango10mo + 1 : 3),
+                                    icon: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            if (hayOtros) ...[
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
                                   const Text('11no/12mo Grado:'),
                                   const Spacer(),
-                                  IconButton(onPressed: () => setState(() => _rango11_12 = _rango11_12 > 1 ? _rango11_12 - 1 : 1), icon: const Icon(Icons.remove)),
-                                  Text('$_rango11_12', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                  IconButton(onPressed: () => setState(() => _rango11_12 = _rango11_12 < 3 ? _rango11_12 + 1 : 3), icon: const Icon(Icons.add)),
-                                ]),
-                              ],
+                                  IconButton(
+                                    onPressed: () => setState(() => _rango11_12 = _rango11_12 > 1 ? _rango11_12 - 1 : 1),
+                                    icon: const Icon(Icons.remove),
+                                  ),
+                                  Text('$_rango11_12', style: const TextStyle(fontSize: 18)),
+                                  IconButton(
+                                    onPressed: () => setState(() => _rango11_12 = _rango11_12 < 3 ? _rango11_12 + 1 : 3),
+                                    icon: const Icon(Icons.add),
+                                  ),
+                                ],
+                              ),
                             ],
-                          ),
+                          ],
                         ),
-                      const SizedBox(height: 12),
-                      ElevatedButton.icon(
+                      ),
+                    ],
+                    if (_actividadSeleccionada != null) ...[
+                      const SizedBox(height: 16),
+                      ElevatedButton(
                         onPressed: () {
-                          _acts.add({
-                            'nombre': _tipo == 'merito' ? _sel!['causa'] : _sel!['falta'],
-                            'cantidad': _tipo == 'merito' ? (int.tryParse(_cantidadController.text) ?? 1) : 1,
-                            'tipo': _tipo,
-                            'categoria': _sel!['categoria'],
+                          setState(() {
+                            _actividades.add({
+                              'nombre': _tipoActividad == 'merito' ? _actividadSeleccionada!['causa'] : _actividadSeleccionada!['falta'],
+                              'cantidad': _calcularCantidad(),
+                              'tipo': _tipoActividad,
+                              'categoria': _actividadSeleccionada!['categoria'],
+                            });
+                            _actividadSeleccionada = null;
                           });
-                          setState(() => _sel = null);
                         },
-                        icon: const Icon(Icons.add),
-                        label: const Text('Agregar actividad'),
                         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                        child: const Text('Agregar actividad'),
                       ),
                     ],
                   ],
@@ -505,65 +495,81 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
       children: [
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Quién notifica', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              const SizedBox(height: 12),
+              const Text('Quién notifica', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
               Row(
                 children: [
-                  const Icon(Icons.account_circle, size: 48, color: Color(0xFF1E3C72)),
+                  const CircleAvatar(
+                    child: Icon(Icons.person),
+                  ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_notificadorNombre, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        Text(_notificadorCargo, style: const TextStyle(color: Colors.grey)),
+                        Text(_nombreNotificador, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_cargoNotificador),
                         if (_usandoCuentaTemporal)
                           const Chip(
-                            label: Text('Temporal', style: TextStyle(fontSize: 12)),
+                            label: Text('Temporal'),
                             backgroundColor: Colors.orange,
-                            labelStyle: TextStyle(color: Colors.white),
                           ),
                       ],
                     ),
                   ),
-                  TextButton.icon(
+                  TextButton(
                     onPressed: () => setState(() => _mostrarTemporalForm = !_mostrarTemporalForm),
-                    icon: const Icon(Icons.swap_horiz),
-                    label: const Text('Cambiar'),
+                    child: const Text('Cambiar'),
                   ),
                 ],
               ),
               if (_mostrarTemporalForm) ...[
                 const Divider(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _tempNombreController,
-                  decoration: const InputDecoration(labelText: 'Nombre y Apellidos', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Nombre y Apellidos'),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: _tempPasswordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Contraseña', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(labelText: 'Contraseña'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child: OutlinedButton(
                         onPressed: _verificarTemporal,
-                        icon: const Icon(Icons.verified),
-                        label: const Text('Verificar'),
+                        child: const Text('Verificar'),
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: OutlinedButton.icon(
-                        onPressed: _escanearQRTemporal,
+                        onPressed: () async {
+                          final result = await Navigator.push<List>(
+                            context,
+                            MaterialPageRoute(builder: (_) => const EscanerScreen()),
+                          );
+                          if (result != null && result.isNotEmpty) {
+                            final datos = result.first;
+                            setState(() {
+                              _usandoCuentaTemporal = true;
+                              _nombreNotificador = '${datos['nombre']} ${datos['apellidos']}';
+                              _cargoNotificador = datos['cargo'] ?? 'estudiante';
+                              _mostrarTemporalForm = false;
+                            });
+                          }
+                        },
                         icon: const Icon(Icons.qr_code_scanner),
                         label: const Text('Escanear QR'),
                       ),
@@ -571,46 +577,56 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
                   ],
                 ),
               ],
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDetallesTab(bool puede) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Fecha y Hora', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    Row(children: [
-                      Expanded(child: TextField(controller: _fc, decoration: const InputDecoration(labelText: 'Fecha', border: OutlineInputBorder()), readOnly: true,
-                        onTap: () async {
-                          final d = await showDatePicker(context: context, initialDate: DateTime.now(), firstDate: DateTime(2020), lastDate: DateTime(2030));
-                          if (d != null) _fc.text = d.toString().split(' ')[0];
-                        })),
-                      const SizedBox(width: 12),
-                      Expanded(child: TextField(controller: _hc, decoration: const InputDecoration(labelText: 'Hora', border: OutlineInputBorder()), readOnly: true,
-                        onTap: () async {
-                          final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
-                          if (t != null) _hc.text = '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
-                        })),
-                    ]),
-                    const SizedBox(height: 16),
-                    const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    TextField(controller: _obs, maxLines: 3, decoration: const InputDecoration(hintText: 'Notas adicionales...', border: OutlineInputBorder())),
-                  ],
+              const SizedBox(height: 24),
+              const Text('Fecha y Hora', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _fechaController,
+                      decoration: const InputDecoration(labelText: 'Fecha'),
+                      readOnly: true,
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (date != null) {
+                          _fechaController.text = date.toString().split(' ')[0];
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _horaController,
+                      decoration: const InputDecoration(labelText: 'Hora'),
+                      readOnly: true,
+                      onTap: () async {
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
+                        if (time != null) {
+                          _horaController.text = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _observacionesController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Notas adicionales...',
                 ),
               ),
             ],
@@ -620,62 +636,199 @@ class _NotificarScreenState extends State<NotificarScreen> with SingleTickerProv
     );
   }
 
-  Widget _buildBottomBar(bool puede) {
+  Widget _buildBottomBar(bool puedeEnviar) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)]),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
       child: SizedBox(
         width: double.infinity,
         child: ElevatedButton.icon(
-          onPressed: puede && !_sending ? _enviarNotificacion : null,
-          icon: _sending ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.send),
-          label: Text(_sending ? 'Enviando...' : 'Enviar Notificación'),
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), padding: const EdgeInsets.symmetric(vertical: 16)),
+          onPressed: puedeEnviar && !_enviando ? _enviarNotificacion : null,
+          icon: _enviando
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.send),
+          label: Text(_enviando ? 'Enviando...' : 'Enviar Notificación'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF10B981),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
         ),
       ),
     );
   }
+}
 
-  Future<void> _enviarNotificacion() async {
-    setState(() => _sending = true);
-    DebugLogger.log("📤 Enviando notificación...");
-    
-    final u = DatabaseService.usuario;
-    
-    final rangos = <String, int>{};
-    if (_tipo == 'demerito' && _sel != null) {
-      rangos['10mo'] = _rango10mo;
-      rangos['11_12'] = _rango11_12;
-    }
-    
-    final result = await DatabaseService.enviarNotificacion({
-      'destinatarios': _dest,
-      'actividades': _acts,
-      'fecha': _fc.text,
-      'hora': _hc.text,
-      'id_star': _usandoCuentaTemporal ? null : u?.id,
-      'cargo_notificador': _usandoCuentaTemporal ? _notificadorCargo : u?.cargo,
-      'observaciones': _obs.text,
-      'rangos': rangos,
-    });
-    
-    if (mounted) {
-      setState(() => _sending = false);
-      
-      if (result['success'] == true) {
-        DebugLogger.log("✅ Notificación enviada exitosamente");
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Notificación enviada'), backgroundColor: Colors.green));
-        setState(() {
-          _dest = [];
-          _acts = [];
-          _tabController.index = 0;
-        });
-      } else {
-        DebugLogger.error("Error al enviar notificación", result['message']);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${result['message']}'), backgroundColor: Colors.red));
-      }
-    }
+  Widget _buildNotificadorTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Quién notifica', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const CircleAvatar(
+                    child: Icon(Icons.person),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_nombreNotificador, style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text(_cargoNotificador),
+                        if (_usandoCuentaTemporal)
+                          const Chip(
+                            label: Text('Temporal'),
+                            backgroundColor: Colors.orange,
+                          ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () => setState(() => _mostrarTemporalForm = !_mostrarTemporalForm),
+                    child: const Text('Cambiar'),
+                  ),
+                ],
+              ),
+              if (_mostrarTemporalForm) ...[
+                const Divider(),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _tempNombreController,
+                  decoration: const InputDecoration(labelText: 'Nombre y Apellidos'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _tempPasswordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(labelText: 'Contraseña'),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _verificarTemporal,
+                        child: const Text('Verificar'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          final result = await Navigator.push<List>(
+                            context,
+                            MaterialPageRoute(builder: (_) => const EscanerScreen()),
+                          );
+                          if (result != null && result.isNotEmpty) {
+                            final datos = result.first;
+                            setState(() {
+                              _usandoCuentaTemporal = true;
+                              _nombreNotificador = '${datos['nombre']} ${datos['apellidos']}';
+                              _cargoNotificador = datos['cargo'] ?? 'estudiante';
+                              _mostrarTemporalForm = false;
+                            });
+                          }
+                        },
+                        icon: const Icon(Icons.qr_code_scanner),
+                        label: const Text('Escanear QR'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 24),
+              const Text('Fecha y Hora', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _fechaController,
+                      decoration: const InputDecoration(labelText: 'Fecha'),
+                      readOnly: true,
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime(2020),
+                          lastDate: DateTime(2030),
+                        );
+                        if (date != null) {
+                          _fechaController.text = date.toString().split(' ')[0];
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _horaController,
+                      decoration: const InputDecoration(labelText: 'Hora'),
+                      readOnly: true,
+                      onTap: () async {
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
+                        if (time != null) {
+                          _horaController.text = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 24),
+              const Text('Observaciones', style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _observacionesController,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Notas adicionales...',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomBar(bool puedeEnviar) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: puedeEnviar && !_enviando ? _enviarNotificacion : null,
+          icon: _enviando
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.send),
+          label: Text(_enviando ? 'Enviando...' : 'Enviar Notificación'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF10B981),
+            padding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+      ),
+    );
   }
 }
