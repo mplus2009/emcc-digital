@@ -206,3 +206,14 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
   }
 }
+  // Asegurar que todo esté envuelto en try-catch
+  @override
+  Widget build(BuildContext context) {
+    return ErrorBoundary(
+      child: _buildContent(context),
+    );
+  }
+  
+  Widget _buildContent(BuildContext context) {
+    // contenido actual del build
+  }
