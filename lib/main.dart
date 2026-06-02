@@ -1,3 +1,4 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,31 +11,25 @@ import 'widgets/error_boundary.dart';
 import 'screens/splash_screen.dart';
 
 void main() async {
-  // Capturar errores en main
-  runZonedGuarded(() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    
-    await SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
-    
-    await PermissionService.requestAllPermissions();
-    await DatabaseService.database;
-    await DatabaseService.initSession();
-    await MeshService.start();
-    await NotificationService.initialize();
-    
-    runApp(
-      ChangeNotifierProvider(
-        create: (_) => ThemeProvider(),
-        child: const EMCCApp(),
-      ),
-    );
-  }, (error, stack) {
-    print('Error capturado en main: $error');
-    print('Stack trace: $stack');
-  });
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+  
+  await PermissionService.requestAllPermissions();
+  await DatabaseService.database;
+  await DatabaseService.initSession();
+  await MeshService.start();
+  await NotificationService.initialize();
+  
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const EMCCApp(),
+    ),
+  );
 }
 
 class EMCCApp extends StatelessWidget {
@@ -50,14 +45,11 @@ class EMCCApp extends StatelessWidget {
           theme: ThemeProvider.lightTheme,
           darkTheme: ThemeProvider.darkTheme,
           themeMode: themeProvider.themeMode,
-          home: ErrorBoundary(
-            child: const SplashScreen(),
+          home: const ErrorBoundary(
+            child: SplashScreen(),
           ),
         );
       },
     );
   }
 }
-
-// Import necesario
-import 'dart:async';
