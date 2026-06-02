@@ -1,10 +1,11 @@
 // lib/screens/splash_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:emcc_digital/services/database_service.dart';
-import 'package:emcc_digital/services/debug_logger.dart';
+import '../services/database_service.dart';
+import '../services/debug_logger.dart';
 import 'login_screen.dart';
 import 'dashboard_screen.dart';
+import '../widgets/error_boundary.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -44,18 +45,12 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _inicializarApp() async {
     try {
       setState(() => _status = "Verificando base de datos...");
-      DebugLogger.log("📁 Inicializando base de datos...");
       await DatabaseService.database;
-      DebugLogger.log("✅ Base de datos lista");
       
       setState(() => _status = "Restaurando sesión...");
-      DebugLogger.log("🔐 Restaurando sesión...");
       await DatabaseService.initSession();
-      DebugLogger.log("✅ Sesión restaurada: ${DatabaseService.isLoggedIn}");
       
       setState(() => _status = "Iniciando servicios...");
-      DebugLogger.log("🌐 Iniciando servicios...");
-      
       await Future.delayed(const Duration(milliseconds: 500));
       
       if (!mounted) return;
@@ -206,14 +201,3 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     );
   }
 }
-  // Asegurar que todo esté envuelto en try-catch
-  @override
-  Widget build(BuildContext context) {
-    return ErrorBoundary(
-      child: _buildContent(context),
-    );
-  }
-  
-  Widget _buildContent(BuildContext context) {
-    // contenido actual del build
-  }
