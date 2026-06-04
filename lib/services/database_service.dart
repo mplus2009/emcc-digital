@@ -30,7 +30,7 @@ class DatabaseService {
     final exists = await File(path).exists();
     
     if (!exists) {
-      // Crear base de datos desde cero
+      // Crear base de datos desde cero si no existe
       final db = await openDatabase(path, version: 1, onCreate: _onCreate);
       return db;
     }
@@ -39,7 +39,7 @@ class DatabaseService {
   }
 
   static Future<void> _onCreate(Database db, int version) async {
-    // Tabla directiva
+    // Tablas existentes...
     await db.execute('''
       CREATE TABLE IF NOT EXISTS directiva (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +48,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla estudiante
     await db.execute('''
       CREATE TABLE IF NOT EXISTS estudiante (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,7 +56,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla profesor
     await db.execute('''
       CREATE TABLE IF NOT EXISTS profesor (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +64,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla oficial
     await db.execute('''
       CREATE TABLE IF NOT EXISTS oficial (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +72,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla actividad
     await db.execute('''
       CREATE TABLE IF NOT EXISTS actividad (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,7 +82,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla meritos
     await db.execute('''
       CREATE TABLE IF NOT EXISTS meritos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +89,6 @@ class DatabaseService {
       )
     ''');
     
-    // Tabla demeritos
     await db.execute('''
       CREATE TABLE IF NOT EXISTS demeritos (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -103,7 +97,7 @@ class DatabaseService {
       )
     ''');
     
-    // Insertar usuario admin
+    // Insertar usuario admin por defecto
     await db.insert('directiva', {
       'nombre': 'admin',
       'apellidos': 'admin',
@@ -111,23 +105,6 @@ class DatabaseService {
       'password': 'admin123',
       'ocupacion': 'director',
       'activo': 1,
-    });
-    
-    // Insertar algunos méritos de ejemplo
-    await db.insert('meritos', {
-      'categoria': 'Académico',
-      'subcategoria': 'Participación',
-      'causa': 'Participación activa en clase',
-      'meritos': 2,
-    });
-    
-    // Insertar algunos deméritos de ejemplo
-    await db.insert('demeritos', {
-      'categoria': 'Conducta',
-      'subcategoria': 'Disciplina',
-      'falta': 'Llegar tarde a clase',
-      'demeritos_10mo': 1,
-      'demeritos_11_12': 1,
     });
   }
 
@@ -137,20 +114,12 @@ class DatabaseService {
       final usuarioJson = prefs.getString('usuario');
       if (usuarioJson != null) {
         final Map<String, dynamic> userData = jsonDecode(usuarioJson);
-        _usuarioActual = Usuario(
-          id: userData['id'] ?? 0,
-          nombre: userData['nombre'] ?? '',
-          apellidos: userData['apellidos'] ?? '',
-          ci: userData['ci'] ?? '',
-          cargo: userData['cargo'] ?? 'directiva',
-          ocupacion: userData['ocupacion'],
-          grado: userData['grado'],
-          peloton: userData['peloton'],
-        );
+        _usuarioActual = Usuario.fromJson(userData);
         return true;
       }
       return false;
     } catch (e) {
+      print("Error initSession: $e");
       return false;
     }
   }
@@ -171,30 +140,53 @@ class DatabaseService {
     try {
       final db = await database;
       
+      // Normalizar entradas: eliminar espacios, convertir a minúsculas y eliminar acentos (versión simple)
+      String normalizar(String texto) {
+        return texto.trim().toLowerCase()
+            .replaceAll('á', 'a')
+            .replaceAll('é', 'e')
+            .replaceAll('í', 'i')
+            .replaceAll('ó', 'o')
+            .replaceAll('ú', 'u')
+            .replaceAll('ü', 'u')
+            .replaceAll('ñ', 'n');
+      }
+      
+      final nom = normalizar(nombre);
+      final ape = normalizar(apellidos);
+      final pass = password.trim(); // La contraseña se compara exacta (sensible)
+      
+      // Consultar en la tabla correspondiente
       final results = await db.query(
         cargo,
-        where: 'nombre = ? AND apellidos = ? AND password = ? AND activo = 1',
-        whereArgs: [nombre, apellidos, password],
+        where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
+        whereArgs: [nom, ape, pass],
       );
       
       if (results.isNotEmpty) {
         final userData = results.first;
+        // Convertir id a int
+        final id = userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0;
+        final peloton = userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString());
+        
         final usuario = Usuario(
-          id: userData['id'] as int,
-          nombre: userData['nombre'] as String,
-          apellidos: userData['apellidos'] as String,
-          ci: userData['ci'] as String,
+          id: id,
+          nombre: userData['nombre'] as String? ?? '',
+          apellidos: userData['apellidos'] as String? ?? '',
+          ci: userData['ci']?.toString() ?? '',
           cargo: cargo,
           ocupacion: userData['ocupacion'] as String?,
           grado: userData['grado'] as String?,
-          peloton: userData['peloton'] as int?,
+          peloton: peloton,
+          activo: userData['activo'] as int? ?? 1,
         );
         await saveSession(usuario);
         return {'success': true, 'usuario': usuario};
       }
       return {'success': false, 'message': 'Usuario o contraseña incorrectos'};
     } catch (e) {
-      return {'success': false, 'message': 'Error: $e'};
+      print("Error en login: $e");
+      return {'success': false, 'message': 'Error interno: $e'};
     }
   }
 
@@ -213,7 +205,7 @@ class DatabaseService {
   }
 
   static Future<Map<String, dynamic>> getDashboard() async {
-    if (_usuarioActual == null) return {'success': false};
+    if (_usuarioActual == null) return {'success': false, 'stats': {}, 'semana_actual': []};
     return {
       'success': true,
       'stats': {'meritos_semana': 0, 'demeritos_semana': 0, 'balance_semana': 0},
@@ -233,11 +225,9 @@ class DatabaseService {
 
   static Future<Map<String, dynamic>> enviarNotificacion(Map<String, dynamic> data) async {
     final db = await database;
-    
     for (final dest in data['destinatarios'] as List) {
       for (final act in data['actividades'] as List) {
         final idEnd = 'estudiante_${dest['id']}';
-        
         await db.insert('actividad', {
           'id_star': data['cargo_notificador'],
           'id_end': idEnd,

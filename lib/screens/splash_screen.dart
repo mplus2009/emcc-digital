@@ -1,4 +1,3 @@
-// lib/screens/splash_screen.dart
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
@@ -24,23 +23,23 @@ class _SplashScreenState extends State<SplashScreen> {
 
   Future<void> _inicializar() async {
     try {
-      // Inicializar base de datos
       await DatabaseService.database;
-      
-      // Restaurar sesión
       await DatabaseService.initSession();
       
       if (!mounted) return;
       
       // Navegar según sesión
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DatabaseService.isLoggedIn 
-              ? const DashboardScreen() 
-              : const LoginScreen(),
-        ),
-      );
+      if (DatabaseService.isLoggedIn) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const DashboardScreen()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
