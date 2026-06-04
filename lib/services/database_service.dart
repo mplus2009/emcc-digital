@@ -30,7 +30,6 @@ class DatabaseService {
     final exists = await File(path).exists();
     
     if (!exists) {
-      // Crear base de datos desde cero si no existe
       final db = await openDatabase(path, version: 1, onCreate: _onCreate);
       return db;
     }
@@ -39,7 +38,6 @@ class DatabaseService {
   }
 
   static Future<void> _onCreate(Database db, int version) async {
-    // Tablas existentes...
     await db.execute('''
       CREATE TABLE IF NOT EXISTS directiva (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -97,7 +95,6 @@ class DatabaseService {
       )
     ''');
     
-    // Insertar usuario admin por defecto
     await db.insert('directiva', {
       'nombre': 'admin',
       'apellidos': 'admin',
@@ -140,7 +137,6 @@ class DatabaseService {
     try {
       final db = await database;
       
-      // Normalizar entradas: eliminar espacios, convertir a minúsculas y eliminar acentos (versión simple)
       String normalizar(String texto) {
         return texto.trim().toLowerCase()
             .replaceAll('á', 'a')
@@ -154,9 +150,8 @@ class DatabaseService {
       
       final nom = normalizar(nombre);
       final ape = normalizar(apellidos);
-      final pass = password.trim(); // La contraseña se compara exacta (sensible)
+      final pass = password.trim();
       
-      // Consultar en la tabla correspondiente
       final results = await db.query(
         cargo,
         where: 'LOWER(TRIM(nombre)) = ? AND LOWER(TRIM(apellidos)) = ? AND password = ? AND activo = 1',
@@ -165,9 +160,13 @@ class DatabaseService {
       
       if (results.isNotEmpty) {
         final userData = results.first;
-        // Convertir id a int
-        final id = userData['id'] is int ? userData['id'] : int.tryParse(userData['id'].toString()) ?? 0;
-        final peloton = userData['peloton'] is int ? userData['peloton'] : int.tryParse(userData['peloton'].toString());
+        // Conversión segura de id
+        final dynamic idRaw = userData['id'];
+        final int id = idRaw is int ? idRaw : (idRaw is String ? int.tryParse(idRaw) ?? 0 : 0);
+        
+        // Conversión segura de peloton
+        final dynamic pelotonRaw = userData['peloton'];
+        final int? peloton = pelotonRaw is int ? pelotonRaw : (pelotonRaw is String ? int.tryParse(pelotonRaw) : null);
         
         final usuario = Usuario(
           id: id,
